@@ -517,19 +517,22 @@ body.rail .foot-quota .rail-only { display: inline; }
 
 /* ==========================================================================
    小记竖栏（常驻显示于侧栏与对话区之间，部分高度 + 可折叠）
-   真实实现：shell.overlay 常驻条目 + fixed 定位（left = 侧栏实测宽度，
-   bottom: 0，height: min(62vh, 560px)），原型用 flex 列模拟相同视觉
+   与真实实现一致：shell.overlay 常驻条目 + position:fixed 浮层，
+   不参与布局 —— 折叠/窗口缩放都不影响对话区宽度；
+   left 由 JS 用 ResizeObserver 跟随侧栏实测宽度
    ========================================================================== */
 .notes-dock {
-  flex: none;
+  position: fixed;
+  left: var(--dsh-notes-dock-left, 260px);
+  bottom: 0;
   width: 280px;
-  align-self: flex-end;
   height: min(62vh, 560px);
   display: flex;
   flex-direction: column;
   min-height: 0;
   background: var(--dsw-alias-bg-layer-1);
   border-right: 1px solid var(--dsw-alias-border-l1);
+  z-index: 1000;
   transition: height var(--ds-transition-duration) var(--ds-ease-in-out);
 }
 .notes-dock.collapsed {
@@ -838,43 +841,6 @@ body.rail .foot-quota .rail-only { display: inline; }
     </div>
   </aside>
 
-  <!-- 小记竖栏：常驻显示于侧栏与对话区之间，部分高度 + 可折叠 -->
-  <section class="notes-dock" id="notesDock">
-    <button class="dock-collapsed" id="dockExpand" title="展开小记">
-      <span>📝</span><span>小记</span>
-      <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7.5L6 3.5l4 4"/></svg>
-    </button>
-    <div class="dock-body">
-      <div class="dock-head">
-        <span class="np-title">小记<span class="em" id="npScopeEm">全局</span></span>
-        <button class="dock-collapse" id="dockCollapse" title="折叠小记">
-          <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4.5L6 8.5l4-4"/></svg>
-        </button>
-      </div>
-      <div class="np-tabs" id="npTabs"></div>
-      <div class="np-error" id="npError" hidden>存储不可用：请检查宿主 storage 域是否就绪。</div>
-    <div class="np-section np-sec-todo">
-      <div class="np-sec-head">
-        <span class="np-sec-title">待办</span>
-        <span class="np-sec-count" id="npCount"></span>
-        <button class="np-clear" id="npClear">清空已完成</button>
-      </div>
-      <div class="np-input-row">
-        <input class="np-input" id="npInput" placeholder="添加待办，回车确认…" maxlength="500" />
-        <button class="np-add" id="npAdd">添加</button>
-      </div>
-      <div class="np-list" id="npList"></div>
-    </div>
-    <div class="np-section np-sec-memo">
-      <div class="np-sec-head">
-        <span class="np-sec-title">随记</span>
-        <span class="np-memo-status" id="npMemoStatus"></span>
-      </div>
-      <textarea class="np-memo" id="npMemo" placeholder="随意记录点什么…（自动保存）" spellcheck="false"></textarea>
-    </div>
-    </div>
-  </section>
-
   <main id="main">
     <div class="chat-header">
       <span class="title" id="chatTitle">LaptopAxisCheck</span>
@@ -905,6 +871,44 @@ body.rail .foot-quota .rail-only { display: inline; }
     </div>
   </main>
 </div>
+
+<!-- 小记竖栏：fixed 浮层（shell.overlay 模拟），不参与布局，
+     折叠/缩放不影响对话区宽度；left 由 ResizeObserver 跟随侧栏 -->
+<section class="notes-dock" id="notesDock">
+  <button class="dock-collapsed" id="dockExpand" title="展开小记">
+    <span>📝</span><span>小记</span>
+    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7.5L6 3.5l4 4"/></svg>
+  </button>
+  <div class="dock-body">
+    <div class="dock-head">
+      <span class="np-title">小记<span class="em" id="npScopeEm">全局</span></span>
+      <button class="dock-collapse" id="dockCollapse" title="折叠小记">
+        <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4.5L6 8.5l4-4"/></svg>
+      </button>
+    </div>
+    <div class="np-tabs" id="npTabs"></div>
+    <div class="np-error" id="npError" hidden>存储不可用：请检查宿主 storage 域是否就绪。</div>
+    <div class="np-section np-sec-todo">
+      <div class="np-sec-head">
+        <span class="np-sec-title">待办</span>
+        <span class="np-sec-count" id="npCount"></span>
+        <button class="np-clear" id="npClear">清空已完成</button>
+      </div>
+      <div class="np-input-row">
+        <input class="np-input" id="npInput" placeholder="添加待办，回车确认…" maxlength="500" />
+        <button class="np-add" id="npAdd">添加</button>
+      </div>
+      <div class="np-list" id="npList"></div>
+    </div>
+    <div class="np-section np-sec-memo">
+      <div class="np-sec-head">
+        <span class="np-sec-title">随记</span>
+        <span class="np-memo-status" id="npMemoStatus"></span>
+      </div>
+      <textarea class="np-memo" id="npMemo" placeholder="随意记录点什么…（自动保存）" spellcheck="false"></textarea>
+    </div>
+  </div>
+</section>
 
 <!-- ====================== 原型演示工具 ====================== -->
 <div class="proto-tools">
@@ -1319,7 +1323,19 @@ $('btnReset').addEventListener('click', () => {
 $('hintClose').addEventListener('click', () => { $('protoHint').hidden = true })
 $('btnSettings').addEventListener('click', () => { $('protoHint').hidden = false })
 
+/* ---- 竖栏 left 跟随侧栏实测宽度（与真实 shell.overlay 实现一致） ---- */
+function syncDockLeft() {
+  const sidebar = document.getElementById('sidebar')
+  const dock = document.getElementById('notesDock')
+  dock.style.left = (sidebar ? sidebar.offsetWidth : 260) + 'px'
+}
+if (typeof ResizeObserver !== 'undefined') {
+  new ResizeObserver(syncDockLeft).observe(document.getElementById('sidebar'))
+}
+window.addEventListener('resize', syncDockLeft)
+
 /* ---- 启动 ---- */
+syncDockLeft()
 renderAll()
 </script>
 </body>
