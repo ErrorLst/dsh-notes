@@ -246,10 +246,19 @@ dsh-notes/
 
 构建：`pnpm build` → `lib/index.mjs` + `lib/client.js`（banner/footer 包装为 `window.__ModuleLoader__.load({id, factory})`）。
 
-安装（二选一，安装细节在实现阶段验证）：
+安装（已验证，`dsh plugin` 即 pnpm 转发 + bundle 自动登记）：
 
-1. **DSH 插件通道**：经 `plugin_install`（或等价机制）以本地路径加入 web profile 的依赖图，并写入 profile `cordis.patch.yml` 插入行；Host 半经 patch 挂载，客户端 bundle 经 `dsh.client` 声明由 client-modules 扫描进 boot 图。
-2. **手动**：将包放入 profile `node_modules`（或 file: 依赖），patch 插入行同上。
+```bash
+git clone <本仓库地址> dsh-notes
+cd dsh-notes
+pnpm install && pnpm build
+dsh plugin --profile web add .     # 相对路径以调用目录为锚；自动追加 dsh.profile.bundles
+dsh web                            # 重启生效（bundle 层启动时组合）
+```
+
+- 卸载：`dsh plugin --profile web remove @dsh-external/dsh-notes`。
+- 客户端热更：profile 以 `link:` 指向仓库，`pnpm build` 后刷新浏览器即生效；
+  Host half 改动需重启 DSH。
 
 ## 9. 里程碑与验收
 

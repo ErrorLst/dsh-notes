@@ -1,12 +1,12 @@
 # dsh-notes · 小记
 
-DSH（DeepSeek Harness）左下角「小记」插件：一个持久化的轻量 todo 面板，支持**全局小记**与**会话小记**两种作用域。所有配色基于 DSH 主题令牌（`--dsw-alias-*`），自动适配明暗主题。
+DSH（DeepSeek Harness）「小记」插件：常驻在侧栏与对话区之间的持久化轻量笔记栏，支持**全局**与**会话**两种作用域。所有配色基于 DSH 主题令牌（`--dsw-alias-*`），自动适配明暗主题。
 
-> 当前状态：**设计/原型阶段**。项目骨架、设计文档与 HTML 原型已就绪，插件本体（`src/`）待原型评审通过后实现。
+> 当前状态：**已实现**（M1-M4 验收中）。`src/` 双 half 已落地并构建，安装命令已验证。
 
 ## 特性
 
-- 📐 **常驻竖栏**：fixed 浮层贴住侧栏右缘（宽 280、部分高度、底部对齐），**不参与布局**——折叠/缩放不影响对话区宽度；可折叠成「小记」按钮条（状态持久化），侧栏折叠时位置自动跟随
+- 📐 **常驻竖栏**：浮层贴住侧栏右缘（宽 280、部分高度、底部对齐），**不参与布局**——折叠/缩放不影响对话区宽度；可折叠成「小记」按钮条（状态持久化），侧栏折叠时位置自动跟随
 - 🌍 全局小记：所有会话共享，跟随用户
 - 💬 会话小记：以会话为单位隔离，切换会话自动跟随（会话标题取自 `SessionListState`）
 - 📋 **待办区**：分点待办 —— 添加、勾选/取消、双击行内编辑、删除、清空已完成
@@ -18,16 +18,33 @@ DSH（DeepSeek Harness）左下角「小记」插件：一个持久化的轻量 
 ## 快速开始
 
 ```bash
-# 1. 安装依赖并构建（需要 pnpm）
+# 1. 克隆并构建
+git clone <本仓库地址> dsh-notes
+cd dsh-notes
 pnpm install
-pnpm build          # 产出 lib/index.mjs（Host half）+ lib/client.js（浏览器 bundle）
+pnpm build            # 产出 lib/index.mjs（Host half）+ lib/client.js（浏览器 bundle）
 
-# 2. 安装进 DSH（二选一）
-#    a) 通过 DSH 插件安装通道（推荐，见 docs/design.md §8）
-#    b) 手动：把包加入 web profile 的 node_modules，并在 cordis.patch.yml 插入行
+# 2. 安装进 DSH（一步完成：加入 profile 依赖并自动登记为 bundle 层）
+dsh plugin --profile web add .
+
+# 3. 重启 DSH 使其生效
+dsh web               # 或 dsh --profile web
 ```
 
-安装完成后刷新 Web 页面，左下角即出现「小记」入口。
+说明：
+
+- `dsh plugin add .` 会把相对路径 `.` 锚定到**你执行命令的目录**（即仓库根目录），
+  在 web profile 里执行 `pnpm add <绝对路径>`，随后自动把声明了 `dsh.bundle` 的包
+  追加到 profile 的 `dsh.profile.bundles`（无需手动改配置）。
+- 默认 profile 名为 `web`；其他 profile 用 `dsh plugin --profile <name> add .`。
+- 安装后**必须重启 DSH 进程**：bundle 层在启动时组合，客户端 bundle 在启动时扫描。
+- 卸载：`dsh plugin --profile web remove @dsh-external/dsh-notes`（同时从 bundles 移除）。
+
+### 开发迭代
+
+- 修改 `src/` 后执行 `pnpm build` 重新生成 `lib/`；profile 以 `link:` 指向本仓库，
+  **刷新浏览器页面**即可看到客户端改动，Host half 改动需重启 DSH。
+- 数据文件：`~/.dsh/storages/notes.json`（存储域 `notes`，JSON 后端）。
 
 ## 文档
 
@@ -41,9 +58,9 @@ pnpm build          # 产出 lib/index.mjs（Host half）+ lib/client.js（浏�
 ```
 dsh-notes/
 ├── src/
-│   ├── index.mjs          # Host half：存储域 + HTTP API（待实现）
-│   └── client/index.ts    # 浏览器 half：触发按钮 + 面板（待实现）
-├── prototype/index.html   # HTML 原型（当前评审对象）
+│   ├── index.mjs          # Host half：存储域 + HTTP API（已实现）
+│   └── client/index.ts    # 浏览器 half：常驻竖栏（已实现）
+├── prototype/index.html   # HTML 原型（样式基准）
 ├── docs/design.md         # 设计文档
 ├── cordis.patch.yml       # bundle 组合补丁（挂 Host half）
 ├── tsdown.config.ts       # 双 half 构建
