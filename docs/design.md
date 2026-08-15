@@ -4,23 +4,41 @@
 
 ## 1. 概述
 
-在 DSH Web 界面左下角（侧边栏底部、设置按钮旁）提供「小记」入口与弹出面板，持久化记录轻量 todo。数据分两种作用域：
+在 DSH Web 界面左下角（侧边栏底部、设置按钮旁）提供「小记」入口与弹出面板，持久化记录**不限于 todo** 的轻量内容。数据分两种作用域：
 
 - **全局小记**：不分会话，长期跟随用户（如「给 API 充值」「整理文档」）。
 - **会话小记**：以会话为单位隔离（如「LaptopAxisCheck」会话的待办），切换会话时自动跟随。
 
-用户已确认的范围：**纯文本 todo**（添加 / 勾选 / 行内编辑 / 删除 / 清空已完成），**仅 UI**（不注册模型可见工具）。
+条目分两种类型：
+
+- **待办（todo）**：可勾选完成/取消、参与「清空已完成」、计入入口徽标。
+- **备忘（note）**：纯文本记录，不参与勾选与清空，不计入徽标（如电话、链接、会议纪要）。
+
+用户已确认的范围：**两类纯文本条目**（添加 / 勾选 / 行内编辑 / 删除 / 清空已完成），**仅 UI**，且**内容不暴露给 agent**（隔离保证见 §2.1）。
 
 ## 2. 功能清单
 
 | 能力 | 说明 |
 | --- | --- |
-| 入口按钮 | `sidebar.footer.action` 新增 cell（id: `notes-panel`）；宽模式显示「📝 小记」+ 未完成徽标，窄轨只显示图标；徽标 = 全局 + 当前会话未完成数之和 |
+| 入口按钮 | `sidebar.footer.action` 新增 cell（id: `notes-panel`）；宽模式显示「📝 小记」+ 未完成徽标，窄轨只显示图标；徽标 = 全局 + 当前会话未完成**待办**数之和（备忘不计入） |
 | 弹出面板 | `shell.overlay` 注册，固定左下角（`left: 8px; bottom: 8px`），宽 320、`max-height: 60vh`，`pointer-events: auto`（overlay 层本身点击穿透）；右上 × 或 Esc 关闭；再次点入口切换 |
 | Tab | 「全局」/「本会话（会话标题）」；无当前会话（`s.current === undefined`）时隐藏会话 tab |
-| 条目操作 | 添加（输入行，Enter/按钮）；勾选/取消（checkbox，显式传 done，幂等）；双击行内编辑（Enter 保存 / Esc 取消 / 失焦保存，空文本忽略）；删除（行悬停出现）；清空已完成（底部按钮，无已完成时禁用） |
+| 条目类型 | 输入行「待办 / 备忘」切换添加类型：待办渲染勾选框、备忘渲染圆点标记；`kind` 存于条目（`'todo' \| 'note'`），旧数据缺省视为待办 |
+| 条目操作 | 添加（Enter/按钮）；勾选/取消（仅待办，显式传 done，幂等）；双击行内编辑（Enter 保存 / Esc 取消 / 失焦保存，空文本忽略）；删除（行悬停出现）；清空已完成（仅移除已完成的**待办**，备忘保留；无已完成待办时禁用） |
 | 空/错状态 | 空列表提示文案；host 存储不可用时面板顶部错误条，UI 不崩溃 |
 | 主题 | 全部使用 `--dsw-alias-*` 语义令牌，明暗由 `body[data-ds-dark-theme]` 自动适配（见 §7） |
+| Agent 隔离 | 小记内容对 agent 完全不可见（见 §2.1） |
+
+### 2.1 Agent 隔离（不可见保证）
+
+小记是**用户私有**数据，agent（模型）在任何路径上都接触不到：
+
+1. **不注册模型工具**：不调用 `harness.defineTool` / `tools.register`，模型工具目录中不存在任何 notes 工具。
+2. **不进提示词**：不注册 `systemPrompt` section / context / 变量，小记内容永不进入模型上下文。
+3. **不进会话日志**：数据只写入独立存储域 `notes`（`~/.dsh/storages/notes.json`），不写入 session log、不产生会话事件（无 `ctx.on` 监听、不 append 事件）。
+4. **不注册 Remote 服务**：Host API 是普通 HTTP 路由（`webServer.register`），仅浏览器 `fetch` 调用；不经 typert gateway / api-remotes 暴露。
+5. **键只是字符串**：会话小记仅以 `sessionId` 字符串为键，与 agent 会话对象无引用关系；客户端读取当前会话 id 仅发生在浏览器展示层（`useSessions`）。
+6. **不依赖 agent 生命周期**：插件只依赖 `webServer` 与 `storageDomain`，与 agent/session 服务解耦。
 
 ## 3. 已核实的运行时事实（实现时不再猜测）
 
@@ -110,15 +128,19 @@ const passthroughSchema = {
 
 - 单一事实来源：Host 域内存态（写链保证落盘先于内存变更）；浏览器每次变更后直接用返回的快照渲染。
 - 多窗口同步：mutation 返回全量快照 + window focus 时重拉；第一版不做实时推送。
-- 无模型工具（用户已确认）；插件不接触会话日志，只以 sessionId 为键。
+- **Agent 隔离**：无模型工具、无 prompt 注入、数据不进会话日志；插件与 agent/session 服务完全解耦（见 §2.1）。
+- 插件不接触会话日志，只以 sessionId 为键。
 
 ## 5. 数据模型
 
 ```ts
+type NoteKind = 'todo' | 'note'
+
 interface NoteItem {
   id: string        // `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+  kind: NoteKind    // 待办（可勾选）或 备忘（纯文本）；旧数据缺省视为 'todo'
   text: string
-  done: boolean
+  done: boolean     // 仅对 kind='todo' 有意义
   createdAt: number // epoch ms
   updatedAt: number
 }
@@ -140,16 +162,18 @@ DomainSpec {
 ```json
 {
   "unit": { "name": "notes", "version": 1 },
-  "global": { "items": [ { "id": "...", "text": "...", "done": false, "createdAt": 0, "updatedAt": 0 } ] },
+  "global": { "items": [ { "id": "...", "kind": "todo", "text": "...", "done": false, "createdAt": 0, "updatedAt": 0 } ] },
   "tables": { "sessions": { "<sessionId>": { "items": [] } } }
 }
 ```
 
 变更语义：
 
-- 添加：`text.trim()` 为空则忽略；追加到列表**尾部**。
-- 编辑：空文本忽略该次编辑（保留原文）。
-- 勾选：客户端显式传 `done`（幂等）。
+- 添加：`text.trim()` 为空则忽略；`kind` 缺省视为 `'todo'`，非法值拒绝；追加到列表**尾部**。
+- 编辑：空文本忽略该次编辑（保留原文）；`kind` 不可通过编辑变更（后续版本可加转换）。
+- 勾选：仅对 `kind='todo'` 生效（note 条目忽略该动作）；客户端显式传 `done`（幂等）。
+- 清空已完成：仅移除 `kind='todo' && done` 的条目，备忘永远保留。
+- 徽标/计数：只统计 `kind='todo'` 的未完成数。
 - 并发：所有变更走插件内 promise 串行链；`sessions` 表写入可用 `table.update(key, fn)` 原子 RMW。
 
 ## 6. Host API 契约
@@ -166,11 +190,11 @@ DomainSpec {
 
 | action | 附加字段 | 行为 |
 | --- | --- | --- |
-| `add` | `scope`, `sessionId?`, `text` | 添加（空文本忽略） |
-| `toggle` | `scope`, `sessionId?`, `id`, `done: boolean` | 勾选/取消（幂等） |
+| `add` | `scope`, `sessionId?`, `text`, `kind?` | 添加（空文本忽略；`kind` 缺省 `'todo'`，仅允许 `'todo'\|'note'`） |
+| `toggle` | `scope`, `sessionId?`, `id`, `done: boolean` | 勾选/取消（幂等；仅对 `kind='todo'` 生效） |
 | `edit` | `scope`, `sessionId?`, `id`, `text` | 行内编辑（空文本忽略） |
 | `delete` | `scope`, `sessionId?`, `id` | 删除 |
-| `clear-done` | `scope`, `sessionId?` | 移除全部已完成 |
+| `clear-done` | `scope`, `sessionId?` | 移除全部已完成**待办**（备忘保留） |
 
 - `scope: 'global'` 时 `sessionId` 必须缺省；`scope: 'session'` 时 `sessionId` 必须为非空字符串，否则 `{ok: false, error: 'bad-args'}`。
 - 成功返回 `{ok: true, state: <同 GET 的快照>}`；存储域不可用返回 `{ok: false, error: 'storage-unavailable'}`。
@@ -221,17 +245,19 @@ dsh-notes/
 
 | 里程碑 | 内容 | 验收 |
 | --- | --- | --- |
-| M0 原型 | `prototype/index.html` 可交互评审（本阶段） | 明暗切换、宽/窄侧栏、完整面板交互、localStorage 模拟持久化 |
+| M0 原型 | `prototype/index.html` 可交互评审（本阶段） | 明暗切换、宽/窄侧栏、待办/备忘双类型、完整面板交互、localStorage 模拟持久化 |
 | M1 实现 | src 双 half 落地（§4-§6） | `pnpm build` 通过；安装后左下角出现入口 |
-| M2 功能验收 | 全局/会话增删改查、徽标、空态/错误态 | 对照 §2 功能清单逐项 |
+| M2 功能验收 | 全局/会话增删改查、待办/备忘、徽标、空态/错误态 | 对照 §2 功能清单逐项 |
 | M3 持久化验收 | 刷新/重启后数据仍在 | `~/.dsh/storages/notes.json` 结构符合 §5 |
 | M4 主题验收 | 明暗双主题下所有状态对比 | 与原型一致，无硬编码色值残留 |
+| M5 隔离验收 | agent 不可见 | 工具目录无 notes 工具；会话日志/提示词中无小记内容；HTTP API 无鉴权面（仅本机 Web） |
 
 ## 10. 已知限制与风险
 
 - 动态重启恢复：dsh-notes 是安装型插件（非常驻动态 cordis 插件），宿主重启后由组合自动恢复；数据在 `notes.json` 不受影响。
 - 多窗口实时同步：第一版为「mutation 快照 + focus 重拉」，多窗口存在秒级延迟。
 - 会话删除/归档：对应小记记录保留（无清理逻辑），无害遗留，后续版本可加。
+- 条目类型演进：`kind` 字段向后兼容（旧数据缺省视为 `'todo'`）；条目类型转换（todo↔note）留待后续版本。
 - 存储文件损坏：域 open 抛 `malformed-medium`，API 返回 `storage-unavailable`，UI 显示错误条，不影响宿主其他功能；schema 演进时 bump 域 version。
 - zod 透传 schema 不做内容校验：数据全部由插件自身写入，风险可控；如未来需要强校验，可引入运行时 zod 构建路径。
 
