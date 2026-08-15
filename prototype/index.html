@@ -301,7 +301,6 @@ input { font-family: inherit; font-size: inherit; color: inherit; }
   display: flex;
   flex-direction: column;
   background: var(--dsw-specific-sidebar-fill);
-  border-right: 1px solid var(--dsw-alias-border-l1);
   transition: width var(--ds-transition-duration) var(--ds-ease-in-out);
   overflow: hidden;
 }
@@ -391,7 +390,7 @@ body.rail .session-item .t, body.rail .session-item .time { display: none; }
 body.rail .session-item::after { content: '·'; font-size: 14px; color: var(--dsw-alias-label-tertiary); }
 body.rail .session-item.active::after { color: var(--dsw-alias-brand-primary); }
 
-/* ---- 侧栏底部（quota + 小记入口 + 设置） ---- */
+/* ---- 侧栏底部（额度 + 设置） ---- */
 .sidebar-foot {
   flex: none;
   display: flex;
@@ -400,37 +399,6 @@ body.rail .session-item.active::after { color: var(--dsw-alias-brand-primary); }
   padding: 8px 10px;
   border-top: 1px solid var(--dsw-alias-border-l1);
 }
-.foot-action {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 8px;
-  border-radius: 6px;
-  color: var(--dsw-alias-label-secondary);
-  font-size: 12px;
-  white-space: nowrap;
-  transition: background var(--ds-transition-duration-fast) var(--ds-ease-in-out);
-}
-.foot-action:hover { background: var(--dsw-alias-interactive-bg-hover); }
-.foot-action .icon { display: inline-flex; font-size: 14px; line-height: 1; }
-.foot-action .label { max-width: 90px; overflow: hidden; text-overflow: ellipsis; }
-body.rail .foot-action { padding: 5px 9px; }
-body.rail .foot-action .label, body.rail .foot-action .badge { display: none; }
-
-.badge {
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 999px;
-  background: var(--dsw-alias-brand-primary);
-  color: var(--dsw-alias-label-primary-foreground);
-  font-size: 10.5px;
-  font-weight: 600;
-  line-height: 16px;
-  text-align: center;
-  flex: none;
-}
-.badge.zero { display: none; }
 
 .foot-quota {
   margin-left: auto;
@@ -548,51 +516,28 @@ body.rail .foot-quota .rail-only { display: inline; }
 .btn-send svg { width: 14px; height: 14px; }
 
 /* ==========================================================================
-   小记面板（shell.overlay 模拟：fixed 左下角，pointer-events: auto）
+   小记竖栏（常驻显示于侧栏与对话区之间）
+   真实实现：shell.overlay 常驻条目 + fixed 定位（left = 侧栏实测宽度），
+   原型用 flex 列模拟相同视觉
    ========================================================================== */
-.notes-panel {
-  position: fixed;
-  left: 8px;
-  bottom: 8px;
-  width: 320px;
-  height: min(62vh, 560px);
+.notes-dock {
+  flex: none;
+  width: 280px;
   display: flex;
   flex-direction: column;
-  background: var(--dsw-alias-bg-overlay);
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: var(--dsh-notes-radius);
-  box-shadow: var(--dsh-notes-shadow);
-  z-index: 1000;
-  overflow: hidden;
-  animation: notes-in var(--ds-transition-duration) var(--ds-ease-in-out);
+  min-height: 0;
+  background: var(--dsw-alias-bg-layer-1);
+  border-right: 1px solid var(--dsw-alias-border-l1);
 }
-@keyframes notes-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.notes-panel[hidden] { display: none; }
 
-.np-head {
+.dock-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px 8px;
+  padding: 12px 14px 8px;
 }
-.np-head .np-title { font-size: 13px; font-weight: 600; color: var(--dsw-alias-label-primary); }
-.np-head .np-title .em { color: var(--dsw-alias-label-tertiary); font-weight: 400; margin-left: 4px; font-size: 11px; }
-.np-close {
-  margin-left: auto;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  color: var(--dsw-alias-label-tertiary);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: background var(--ds-transition-duration-fast) var(--ds-ease-in-out);
-}
-.np-close:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
-.np-close svg { width: 13px; height: 13px; }
+.dock-head .np-title { font-size: 13px; font-weight: 600; color: var(--dsw-alias-label-primary); }
+.dock-head .np-title .em { color: var(--dsw-alias-label-tertiary); font-weight: 400; margin-left: 4px; font-size: 11px; }
 
 .np-tabs {
   display: flex;
@@ -834,11 +779,6 @@ body.rail .foot-quota .rail-only { display: inline; }
     <ul id="sessionList"></ul>
     <div class="section-label">未分组</div>
     <div class="sidebar-foot">
-      <button class="foot-action" id="notesTrigger" title="小记">
-        <span class="icon">📝</span>
-        <span class="label">小记</span>
-        <span class="badge zero" id="notesBadge">0</span>
-      </button>
       <div class="foot-quota" title="DeepSeek 额度 ¥43.29">
         <span class="label">¥43.29</span><span class="rail-only">¥</span>
       </div>
@@ -847,6 +787,34 @@ body.rail .foot-quota .rail-only { display: inline; }
       </button>
     </div>
   </aside>
+
+  <!-- 小记竖栏：常驻显示于侧栏与对话区之间 -->
+  <section class="notes-dock" id="notesDock">
+    <div class="dock-head">
+      <span class="np-title">小记<span class="em" id="npScopeEm">全局</span></span>
+    </div>
+    <div class="np-tabs" id="npTabs"></div>
+    <div class="np-error" id="npError" hidden>存储不可用：请检查宿主 storage 域是否就绪。</div>
+    <div class="np-section np-sec-todo">
+      <div class="np-sec-head">
+        <span class="np-sec-title">待办</span>
+        <span class="np-sec-count" id="npCount"></span>
+        <button class="np-clear" id="npClear">清空已完成</button>
+      </div>
+      <div class="np-input-row">
+        <input class="np-input" id="npInput" placeholder="添加待办，回车确认…" maxlength="500" />
+        <button class="np-add" id="npAdd">添加</button>
+      </div>
+      <div class="np-list" id="npList"></div>
+    </div>
+    <div class="np-section np-sec-memo">
+      <div class="np-sec-head">
+        <span class="np-sec-title">随记</span>
+        <span class="np-memo-status" id="npMemoStatus"></span>
+      </div>
+      <textarea class="np-memo" id="npMemo" placeholder="随意记录点什么…（自动保存）" spellcheck="false"></textarea>
+    </div>
+  </section>
 
   <main id="main">
     <div class="chat-header">
@@ -861,7 +829,7 @@ body.rail .foot-quota .rail-only { display: inline; }
       <div class="msg">
         <span class="who">DeepSeek-V4-Flash</span>
         <div class="tool-chip"><span class="done">✓ 已完成</span><span>工具调用 · read LaptopAxisCheck 文档</span></div>
-        <div class="assistant-text">检查完成。转轴左右两侧间隙正常，无异响；铰链螺丝未见松动。<br/>已将待办项写入会话小记（见左下角「小记」）。</div>
+        <div class="assistant-text">检查完成。转轴左右两侧间隙正常，无异响；铰链螺丝未见松动。<br/>已将待办项写入会话小记（见左侧「小记」竖栏）。</div>
       </div>
     </div>
     <div class="composer-wrap">
@@ -879,37 +847,6 @@ body.rail .foot-quota .rail-only { display: inline; }
   </main>
 </div>
 
-<!-- ====================== 小记面板（overlay 模拟） ====================== -->
-<div class="notes-panel" id="notesPanel" hidden>
-  <div class="np-head">
-    <span class="np-title">小记<span class="em" id="npScopeEm">全局</span></span>
-    <button class="np-close" id="npClose" title="关闭（Esc）">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
-    </button>
-  </div>
-  <div class="np-tabs" id="npTabs"></div>
-  <div class="np-error" id="npError" hidden>存储不可用：请检查宿主 storage 域是否就绪。</div>
-  <div class="np-section np-sec-todo">
-    <div class="np-sec-head">
-      <span class="np-sec-title">待办</span>
-      <span class="np-sec-count" id="npCount"></span>
-      <button class="np-clear" id="npClear">清空已完成</button>
-    </div>
-    <div class="np-input-row">
-      <input class="np-input" id="npInput" placeholder="添加待办，回车确认…" maxlength="500" />
-      <button class="np-add" id="npAdd">添加</button>
-    </div>
-    <div class="np-list" id="npList"></div>
-  </div>
-  <div class="np-section np-sec-memo">
-    <div class="np-sec-head">
-      <span class="np-sec-title">随记</span>
-      <span class="np-memo-status" id="npMemoStatus"></span>
-    </div>
-    <textarea class="np-memo" id="npMemo" placeholder="随意记录点什么…（自动保存）" spellcheck="false"></textarea>
-  </div>
-</div>
-
 <!-- ====================== 原型演示工具 ====================== -->
 <div class="proto-tools">
   <button id="btnTheme" title="切换明暗主题（真实 DSH 机制：body[data-ds-dark-theme]）">🌗 明/暗</button>
@@ -919,7 +856,7 @@ body.rail .foot-quota .rail-only { display: inline; }
 <div class="proto-hint" id="protoHint">
   <button class="x" id="hintClose">✕</button>
   <b>dsh-notes 原型</b><br/>
-  · 左下角「📝 小记」打开面板，再点/Esc/✕ 关闭<br/>
+  · 竖栏常驻显示在侧栏与对话区之间，无按钮/弹窗<br/>
   · 切换会话看「本会话」tab 跟随<br/>
   · 待办区分点添加；随记区自由文本自动保存<br/>
   · 双击待办行内编辑；悬停出现删除<br/>
@@ -985,7 +922,6 @@ function load() {
     global: saved.global,
     sessions: Object.assign({}, DEFAULT_DATA.sessions, saved.sessions || {}),
     selected: saved.selected || 'laptop',
-    open: false,
     tab: saved.tab || 'global',
     rail: !!saved.rail,
     dark: !!saved.dark,
@@ -998,7 +934,6 @@ function defaults() {
       Object.entries(DEFAULT_DATA.sessions).map(([k, v]) => [k, { title: v.title, todos: v.todos.map(clone), memo: v.memo }]),
     ),
     selected: 'laptop',
-    open: false,
     tab: 'global',
     rail: false,
     dark: false,
@@ -1022,7 +957,6 @@ function currentSession() { return state.sessions[state.selected] || null }
 function scopeOf(tab) {
   return tab === 'global' ? state.global : currentSession()
 }
-function openCount(todos) { return todos.filter((it) => !it.done).length }
 
 /* ======================================================================
    渲染
@@ -1045,13 +979,6 @@ function renderSessions() {
   }
   const s = currentSession()
   $('chatTitle').textContent = s ? s.title : '—'
-}
-
-function renderBadge() {
-  const total = openCount(state.global.todos) + openCount(currentSession()?.todos || [])
-  const badge = $('notesBadge')
-  badge.textContent = String(total)
-  badge.classList.toggle('zero', total === 0)
 }
 
 function renderTabs() {
@@ -1153,23 +1080,17 @@ function onMemoBlur() {
   if (memoDirty) { saveMemo(true); memoDirty = false; setMemoStatus('已保存') }
 }
 
-function renderPanel() {
-  $('notesPanel').hidden = !state.open
-  $('notesTrigger').classList.toggle('active', state.open)
-  if (!state.open) return
+function renderDock() {
   renderTabs()
   renderList()
   renderMemo(false)
-  $('npInput').focus()
 }
 
 function renderAll() {
   document.body.classList.toggle('rail', state.rail)
   document.body.toggleAttribute('data-ds-dark-theme', state.dark)
-  $('notesTrigger').classList.toggle('active', state.open)
   renderSessions()
-  renderBadge()
-  if (state.open) renderPanel()
+  renderDock()
   persist()
 }
 
@@ -1177,26 +1098,10 @@ function renderAll() {
    交互
    ====================================================================== */
 
-/* ---- 入口触发 ---- */
-function closePanel() {
-  if (memoDirty) { saveMemo(true); memoDirty = false }
-  state.open = false
-  renderPanel()
-}
-
-$('notesTrigger').addEventListener('click', () => {
-  if (state.open) { closePanel(); return }
-  state.open = true
-  renderPanel()
-})
-
-$('npClose').addEventListener('click', closePanel)
-
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     const editing = document.querySelector('.np-item .np-edit')
-    if (editing) { cancelEdit(editing); return }
-    if (state.open) closePanel()
+    if (editing) cancelEdit(editing)
   }
 })
 
@@ -1207,7 +1112,8 @@ $('npTabs').addEventListener('click', (e) => {
   if (tab.dataset.tab === state.tab) return
   if (memoDirty) { saveMemo(true); memoDirty = false }
   state.tab = tab.dataset.tab
-  renderPanel()
+  renderDock()
+  $('npInput').focus()
 })
 
 /* ---- 添加待办 ---- */
@@ -1220,8 +1126,7 @@ function addItem() {
   const item = { id: uid(), text, done: false, createdAt: now(), updatedAt: now() }
   scope.todos.push(item)
   input.value = ''
-  renderPanel()
-  renderBadge()
+  renderDock()
 }
 $('npAdd').addEventListener('click', addItem)
 $('npInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') addItem() })
@@ -1237,12 +1142,12 @@ $('npList').addEventListener('click', (e) => {
   if (e.target.closest('.np-check')) {
     item.done = !item.done
     item.updatedAt = now()
-    renderPanel()
+    renderDock()
     renderBadge()
   } else if (e.target.closest('.np-del')) {
     const idx = scope.todos.indexOf(item)
     if (idx >= 0) scope.todos.splice(idx, 1)
-    renderPanel()
+    renderDock()
     renderBadge()
   }
 })
@@ -1282,13 +1187,12 @@ function commitEdit(input, item) {
     item.text = text
     item.updatedAt = now()
   }
-  renderPanel()
-  renderBadge()
+  renderDock()
 }
 
 function cancelEdit(input) {
   if (!input.isConnected) return
-  renderPanel()
+  renderDock()
 }
 
 /* ---- 清空已完成（仅待办区） ---- */
@@ -1298,8 +1202,7 @@ $('npClear').addEventListener('click', () => {
   const rest = scope.todos.filter((it) => !it.done)
   if (rest.length === scope.todos.length) return
   scope.todos = rest
-  renderPanel()
-  renderBadge()
+  renderDock()
 })
 
 /* ---- 随记（自由文本，自动保存） ---- */

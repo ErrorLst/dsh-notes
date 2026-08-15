@@ -4,28 +4,28 @@
 
 ## 1. 概述
 
-在 DSH Web 界面左下角（侧边栏底部、设置按钮旁）提供「小记」入口与弹出面板，持久化记录**不限于 todo** 的轻量内容。数据分两种作用域：
+在 DSH Web 界面中，小记以**常驻竖栏**形式固定显示在左侧边栏与中间对话区之间（无独立入口按钮、无弹窗），持久化记录**不限于 todo** 的轻量内容。数据分两种作用域：
 
 - **全局小记**：不分会话，长期跟随用户（如「给 API 充值」「整理文档」）。
 - **会话小记**：以会话为单位隔离（如「LaptopAxisCheck」会话的待办），切换会话时自动跟随。
 
-面板内容区分为**两个部分**（每个作用域各自独立）：
+竖栏内容分为**两个部分**（每个作用域各自独立）：
 
-- **待办区（todo）**：分点待办列表 —— 每行一个可勾选条目，支持添加/勾选/行内编辑/删除/清空已完成，未完成数计入入口徽标。
-- **随记区（memo）**：自由多行文本 —— 随意输入、不需要分点（如电话、链接、会议纪要），输入防抖 + 失焦自动保存，不参与勾选统计、不计入徽标。
+- **待办区（todo）**：分点待办列表 —— 每行一个可勾选条目，支持添加/勾选/行内编辑/删除/清空已完成。
+- **随记区（memo）**：自由多行文本 —— 随意输入、不需要分点（如电话、链接、会议纪要），输入防抖 + 失焦自动保存，不参与勾选统计。
 
-用户已确认的范围：**待办（分点）+ 随记（自由文本）两类内容**，**仅 UI**，且**内容不暴露给 agent**（隔离保证见 §2.1）。
+用户已确认的范围：**待办（分点）+ 随记（自由文本）两类内容**，**常驻竖栏展示（无按钮/弹窗）**，且**内容不暴露给 agent**（隔离保证见 §2.1）。
 
 ## 2. 功能清单
 
 | 能力 | 说明 |
 | --- | --- |
-| 入口按钮 | `sidebar.footer.action` 新增 cell（id: `notes-panel`）；宽模式显示「📝 小记」+ 未完成徽标，窄轨只显示图标；徽标 = 全局 + 当前会话未完成**待办**数之和（随记不计入） |
-| 弹出面板 | `shell.overlay` 注册，固定左下角（`left: 8px; bottom: 8px`），宽 320、`height: min(62vh, 560px)`，`pointer-events: auto`（overlay 层本身点击穿透）；右上 × 或 Esc 关闭；再次点入口切换 |
+| 常驻竖栏 | 固定显示在**左侧边栏与中间对话区之间**：宽 280、通高（top/bottom 0），无独立入口按钮、无弹窗、不可关闭，随页面常驻（无会话 hero 视图时仍显示，仅全局 tab） |
+| 定位机制 | 真实实现：`shell.overlay` **常驻条目** + `position: fixed`，`left` = 侧栏实测宽度（`ResizeObserver` 跟随宽/窄折叠），`pointer-events: auto`；原型用 flex 列模拟相同视觉 |
 | Tab | 「全局」/「本会话（会话标题）」；无当前会话（`s.current === undefined`）时隐藏会话 tab；切换时各自独立读写 |
 | 待办区 | 分区标题行（标题 + 「共 X 项 · 未完成 Y」+「清空已完成」）+ 添加输入行 + 分点列表：勾选/取消（显式传 done，幂等）、双击行内编辑（Enter 保存 / Esc 取消 / 失焦保存，空文本忽略）、删除（行悬停出现）、清空已完成（仅移除已完成条目，无已完成时禁用） |
-| 随记区 | 分区标题行（标题 + 保存状态）+ 多行 textarea：自由文本（不限制格式/行数），输入防抖 600ms 自动保存 + 失焦立即保存（含关面板/Esc/切 tab/切会话前的落盘），状态显示「保存中…/已保存」；清空 = 文本置空 |
-| 空/错状态 | 待办空列表提示；host 存储不可用时面板顶部错误条，UI 不崩溃 |
+| 随记区 | 分区标题行（标题 + 保存状态）+ 多行 textarea：自由文本（不限制格式/行数），输入防抖 600ms 自动保存 + 失焦立即保存（含切 tab/切会话前的落盘），状态显示「保存中…/已保存」；清空 = 文本置空 |
+| 空/错状态 | 待办空列表提示；host 存储不可用时竖栏顶部错误条，UI 不崩溃 |
 | 主题 | 全部使用 `--dsw-alias-*` 语义令牌，明暗由 `body[data-ds-dark-theme]` 自动适配（见 §7） |
 | Agent 隔离 | 小记内容对 agent 完全不可见（见 §2.1） |
 
@@ -48,17 +48,20 @@
 
 | 插槽 | 类型/作用域 | 注册项 | owner props | standard props |
 | --- | --- | --- | --- | --- |
-| `sidebar.footer.action` | list / root | `{id, order, label}` | `{wide: boolean}` | `useSessions: SnapshotSelectorHook<SessionListState>`、`useWorkspaces` |
-| `shell.overlay` | list / root | `{id, order, label}` | 无 | 同上 |
+| `shell.overlay` | list / root | `{id, order, label}` | 无 | `useSessions: SnapshotSelectorHook<SessionListState>`、`useWorkspaces` |
 
-- 新 id 会**追加**为新 cell，不覆盖现有项（现占用：`cordis-panel`、`deepseek-quota`）。
-- 注册范式（参考 `dsh-deepseek-quota/lib/client.js`）：
+- 竖栏是 `shell.overlay` 的一个**常驻条目**（始终渲染、不随交互显隐），新 id 会追加为新 cell，不覆盖现有项。
+- overlay 层本身点击穿透，竖栏根元素需 `pointer-events: auto`；层位于所有列之上、脱离滚动容器。
+- 定位：`position: fixed; left: <侧栏宽度>; top: 0; bottom: 0; width: 280px`。侧栏宽度随折叠变化（宽 260 / 窄轨 56），用 `ResizeObserver` 监听侧栏 DOM 元素（`document.querySelector` 定位侧栏节点）持续校正 `left`。
+- 注册范式（参考 `dsh-deepseek-quota/lib/client.js` 的 slots 用法）：
 
 ```js
-ctx.slots.inject('sidebar.footer.action', () =>
-  ctx.slots.register({ name: 'sidebar.footer.action', id: 'notes-panel' }, Trigger),
+ctx.slots.inject('shell.overlay', () =>
+  ctx.slots.register({ name: 'shell.overlay', id: 'notes-dock' }, NotesDock),
 )
 ```
+
+- `sidebar.footer.action` **不再使用**（无入口按钮方案）。
 
 ### 3.2 当前会话与标题
 
@@ -112,8 +115,10 @@ const passthroughSchema = {
 
 ```
 ┌─ 浏览器（client bundle, lib/client.js）────────────────────┐
-│  sidebar.footer.action ── 触发按钮（wide/rail + 徽标）      │
-│  shell.overlay ────────── 面板（tab/输入/列表/操作）         │
+│  shell.overlay ── 常驻竖栏（侧栏与对话区之间，宽 280）       │
+│    ├ 顶部：小记 + 全局/本会话 tab                            │
+│    ├ 待办区：添加输入 + 分点列表 + 清空已完成                 │
+│    └ 随记区：自由文本 textarea（自动保存）                   │
 │        │  useSessions（当前会话 id + 标题）                  │
 │        │  fetch('/api/dsh-notes')（读/写，JSON）             │
 └────────┼───────────────────────────────────────────────────┘
@@ -178,7 +183,7 @@ DomainSpec {
 - 勾选：客户端显式传 `done`（幂等）。
 - 清空已完成：仅移除 `done === true` 的待办；随记不受影响。
 - 随记：`set-memo` 以文本**整体替换**（可为空串 = 清空），不区分行；自动保存由客户端防抖 + 失焦触发。
-- 徽标/计数：只统计 `todos` 中未完成的条目。
+- 计数：待办区标题行「共 X 项 · 未完成 Y」只统计 `todos`。
 - 并发：所有变更走插件内 promise 串行链；`sessions` 表写入可用 `table.update(key, fn)` 原子 RMW。
 
 ## 6. Host API 契约
@@ -214,16 +219,13 @@ DomainSpec {
 
 | 用途 | 令牌 |
 | --- | --- |
-| 面板背景/描边 | `--dsw-alias-bg-overlay` / `--dsw-alias-border-l2`（分隔线用 `--dsw-alias-border-l1`） |
-| 文本 | `--dsw-alias-label-primary`（正文）、`--dsw-alias-label-secondary`（次要）、`--dsw-alias-label-tertiary`（时间/禁用/提示） |
+| 竖栏背景/描边 | `--dsw-alias-bg-layer-1` / `--dsw-alias-border-l1`（右缘分隔线；无阴影、无圆角，与列布局融合） |
+| 文本 | `--dsw-alias-label-primary`（正文）、`--dsw-alias-label-secondary`（次要）、`--dsw-alias-label-tertiary`（时间/禁用/提示/分区标题） |
 | 品牌/强调 | `--dsw-alias-brand-primary`（勾选填充、按钮主填充）、`--dsw-alias-label-primary-foreground`（按钮/勾选上的前景） |
-| 交互 | `--dsw-alias-interactive-bg-hover`（行悬停）、`--dsw-alias-interactive-bg-hover-danger`（删除悬停） |
+| 交互 | `--dsw-alias-interactive-bg-hover`（行悬停）、`--dsw-alias-interactive-bg-hover-danger`（删除悬停）、`--dsw-alias-button-ghost-active-fill`（tab 激活） |
 | 输入框 | `--dsw-specific-input-major` |
 | 错误 | `--dsw-alias-state-error-primary`（存储不可用提示） |
-| 侧栏 | `--dsw-specific-sidebar-fill`、`--dsw-specific-sidebar-nav-item-active` / `-hover`（入口按钮 hover 底色参考） |
 | 字体/动效 | `--dsw-font-family`、`--ds-ease-in-out`、`--ds-transition-duration-fast` |
-
-弹层阴影：`shell.overlay` 层自带的提升感依赖阴影；DSH 未在 alias 层暴露通用弹层阴影令牌（`--dsw-shadow-lv3` 为运行时注入值，插件代码不可假设存在），故面板自带 `box-shadow`，明暗各一档（原型内已定义，见 `prototype/index.html` 中 `--dsh-notes-shadow`）。
 
 **原型即样式基准**：`prototype/index.html` 内嵌了与 design-platform.css 一致的令牌定义（仅原型内嵌，插件本体不复制色板），插件实现时应以原型的组件样式为基准迁移。
 
@@ -251,9 +253,9 @@ dsh-notes/
 
 | 里程碑 | 内容 | 验收 |
 | --- | --- | --- |
-| M0 原型 | `prototype/index.html` 可交互评审（本阶段） | 明暗切换、宽/窄侧栏、待办/随记双分区、随记自动保存、完整面板交互、localStorage 模拟持久化 |
-| M1 实现 | src 双 half 落地（§4-§6） | `pnpm build` 通过；安装后左下角出现入口 |
-| M2 功能验收 | 全局/会话待办增删改查、随记自动保存、徽标、空态/错误态 | 对照 §2 功能清单逐项 |
+| M0 原型 | `prototype/index.html` 可交互评审（本阶段） | 明暗切换、宽/窄侧栏、竖栏常驻（无按钮/弹窗）、待办/随记双分区、随记自动保存、完整交互、localStorage 模拟持久化 |
+| M1 实现 | src 双 half 落地（§4-§6） | `pnpm build` 通过；安装后侧栏与对话区之间出现常驻竖栏 |
+| M2 功能验收 | 全局/会话待办增删改查、随记自动保存、tab 跟随、空态/错误态、窄轨侧栏下竖栏位置跟随 | 对照 §2 功能清单逐项 |
 | M3 持久化验收 | 刷新/重启后数据仍在 | `~/.dsh/storages/notes.json` 结构符合 §5 |
 | M4 主题验收 | 明暗双主题下所有状态对比 | 与原型一致，无硬编码色值残留 |
 | M5 隔离验收 | agent 不可见 | 工具目录无 notes 工具；会话日志/提示词中无小记内容；HTTP API 无鉴权面（仅本机 Web） |
@@ -262,6 +264,8 @@ dsh-notes/
 
 - 动态重启恢复：dsh-notes 是安装型插件（非常驻动态 cordis 插件），宿主重启后由组合自动恢复；数据在 `notes.json` 不受影响。
 - 多窗口实时同步：第一版为「mutation 快照 + focus 重拉」，多窗口存在秒级延迟。
+- overlay 竖栏遮挡：竖栏以 fixed 层覆盖对话列左缘；对话内容居中（max-width 860）时通常落在留白区，但窄窗口下可能盖住对话区左缘内容 —— 已知取舍，原型/实现均按 280px 宽。
+- 侧栏折叠：竖栏 `left` 跟随侧栏实测宽度（ResizeObserver），宽 260 / 窄轨 56 均正确对齐。
 - 会话删除/归档：对应小记记录保留（无清理逻辑），无害遗留，后续版本可加。
 - 结构演进：`NoteScope = { todos, memo }` 为 v1 结构；后续如需扩展（如条目类型、排序），bump 域 version 并提供迁移。
 - 存储文件损坏：域 open 抛 `malformed-medium`，API 返回 `storage-unavailable`，UI 显示错误条，不影响宿主其他功能；schema 演进时 bump 域 version。
@@ -269,7 +273,7 @@ dsh-notes/
 
 ## 11. 参考
 
-- `dsh-deepseek-quota`（`.dsh-plugins/` 与 profile 内副本）：footer action 注册 + webServer 路由范式。
+- `dsh-deepseek-quota`（`.dsh-plugins/` 与 profile 内副本）：webServer 路由 + slots 注册范式。
 - `dsh-message-feedback`（profile node_modules）：storageDomain 打开/关闭范式、域 spec 声明。
 - `@deepseek-ai/dsh-client-ui-theme/lib/styles/design-platform.css`：主题令牌唯一事实来源。
 - `@deepseek-ai/dsh-client-runtime`：`SessionListState` / `useSessions` 契约。
