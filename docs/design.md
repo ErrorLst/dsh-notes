@@ -316,6 +316,24 @@ dsh web                            # 重启生效（bundle 层启动时组合）
 - 存储文件损坏：域 open 抛 `malformed-medium`，API 返回 `storage-unavailable`，UI 显示错误条，不影响宿主其他功能；schema 演进时 bump 域 version。
 - zod 透传 schema 不做内容校验：数据全部由插件自身写入，风险可控；如未来需要强校验，可引入运行时 zod 构建路径。
 
+### 10.1 后续候选功能（评审结论：本轮未采纳，留档备选）
+
+> 评审日期：2026-08 · 结论：保持当前范围，以下候选不纳入本迭代。将来需要时按此列表评估，实现前各候选需更新为已核实的接口事实。
+
+**A 档（数据可用性/可恢复性）**
+
+| 候选 | 痛点 | 实现路径（基于已核实能力） |
+| --- | --- | --- |
+| 跨会话搜索/「全部」视图 | 会话小记只跟随当前会话，旧会话内容无法检索 | Host 增 `GET /api/dsh-notes/search?q=` 遍历 `table.entries()` 匹配；竖栏增搜索 tab；标题用 `sessionQuery.readTitleSnapshot`（只读元数据） |
+| 误删撤销 | 删除/清空立即永久丢失 | 客户端内存级撤销（删除后 5s 出现「撤销」），无需改存储 |
+| 无效会话清理 | 会话删除/归档后记录残留 | 维护接口对比 `sessionPersistence.list()`（只读会话头）清理；会给插件引入 session 服务只读依赖（与隔离不冲突，需确认） |
+
+**B 档（增强）**：消息一键存入小记（`conversation.chat.assistant-actions` 加按钮，聊天→小记方向，不违反隔离）；导出/备份（JSON/Markdown 下载）；置顶/拖拽排序（域 version 2 + 迁移）。
+
+**C 档（工程质量）**：Host API 冒烟测试（node --test）；多窗口实时同步（SSE 推送 `domain/changed`）；竖栏宽度可调。
+
+**明确不做**：模型侧工具/agent 可见性（违反核心要求）；提醒/通知；随记 Markdown 渲染（违背自由文本定位）；多用户/云同步。
+
 ## 11. 参考
 
 - `dsh-deepseek-quota`（`.dsh-plugins/` 与 profile 内副本）：webServer 路由 + slots 注册范式。
