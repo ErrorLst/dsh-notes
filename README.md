@@ -2,7 +2,7 @@
 
 DSH（DeepSeek Harness）「小记」插件：常驻在侧栏与对话区之间的持久化轻量笔记栏，支持**全局**与**会话**两种作用域。所有配色基于 DSH 主题令牌（`--dsw-alias-*`），自动适配明暗主题。
 
-> 当前状态：**已实现**（M1-M4 验收中）。`src/` 双 half 已落地并构建，安装命令已验证。
+> 当前状态：**已实现**（M1 完成，M2-M5 待重启 DSH 后验收）。`src/` 双 half 已落地并构建，安装命令已验证。
 
 ## 特性
 
@@ -45,6 +45,32 @@ dsh web               # 或 dsh --profile web
 - 修改 `src/` 后执行 `pnpm build` 重新生成 `lib/`；profile 以 `link:` 指向本仓库，
   **刷新浏览器页面**即可看到客户端改动，Host half 改动需重启 DSH。
 - 数据文件：`~/.dsh/storages/notes.json`（存储域 `notes`，JSON 后端）。
+
+## 持久化
+
+小记数据走 DSH **存储域（storage domain）+ JSON 后端**链路：
+
+```
+浏览器操作 → POST /api/dsh-notes → 插件内串行链 → storageDomain('notes', v1)
+                                              → json 后端 → ~/.dsh/storages/notes.json
+```
+
+- **落盘位置**：`~/.dsh/storages/notes.json`（首次写入时创建，与 `workspace.json` 同机制）
+- **文件结构**（人类可读 JSON）：
+
+```json
+{
+  "unit": { "name": "notes", "version": 1 },
+  "global": { "todos": [ { "id": "...", "text": "...", "done": false, "createdAt": 0, "updatedAt": 0 } ], "memo": "" },
+  "tables": { "sessions": { "<sessionId>": { "todos": [], "memo": "" } } }
+}
+```
+
+- **写入语义**：域写链 —— 先原子整文件落盘（临时文件 + rename，崩溃不留半截），
+  再改内存、后发变更事件；插件内串行链保证读-改-写不交错
+- **与对话消息隔离**：对话消息存于 `~/.dsh/sessions/<cwd>/<sessionId>/session.jsonl.zstd`
+  （追加式 JSONL + zstd 压缩），与小记是**两条独立通道**；agent 只接触会话日志，
+  结构上接触不到 notes 文件（详见 [docs/design.md](docs/design.md) §3.6）
 
 ## 文档
 

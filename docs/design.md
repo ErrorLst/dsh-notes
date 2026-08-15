@@ -1,6 +1,6 @@
 # dsh-notes 设计文档
 
-> 版本：0.1（草案） · 状态：原型评审中 · 关联原型：`prototype/index.html`
+> 版本：0.2 · 状态：**已实现**（M1 完成，M2-M5 待重启 DSH 后验收）· 关联原型：`prototype/index.html`
 
 ## 1. 概述
 
@@ -22,7 +22,7 @@
 | --- | --- |
 | 常驻竖栏 | 固定显示在**左侧边栏与中间对话区之间**：宽 280、**部分高度**（`min(62vh, 560px)`）、**底部对齐**，无独立入口按钮、无弹窗；无会话 hero 视图时仍显示（仅全局 tab） |
 | 折叠/展开 | 竖栏头部右侧「▾」按钮折叠；折叠后在同位置显示「📝 小记」按钮条（圆角胶囊，点击展开），折叠状态持久化；折叠/展开前先落盘随记 |
-| 定位机制 | 真实实现与原型一致：`shell.overlay` **常驻条目** + `position: fixed` 浮层，**不参与布局**（折叠/窗口缩放不影响对话区宽度）；`left` = 侧栏实测宽度（`ResizeObserver` 跟随宽/窄折叠），`bottom: 0`、`height: min(62vh, 560px)`，`pointer-events: auto`；折叠时仅渲染按钮条 |
+| 定位机制 | 实现与原型一致：`shell.overlay` **常驻条目** + `position: absolute` 浮层（定位上下文 = overlay 层，该层 `inset: 0` 覆盖整个 AppFrame），**不参与布局**（折叠/窗口缩放不影响对话区宽度）；`left` = AppFrame 网格第一列（侧栏列）实测宽度，由组件从自身 DOM 向上找到 grid 帧、解析 `gridTemplateColumns`，`MutationObserver` 跟随侧栏折叠/拖拽；`bottom: 0`、`height: min(62vh, 560px)`、`pointer-events: auto`；折叠时仅渲染按钮条 |
 | Tab | 「全局」/「本会话（会话标题）」；无当前会话（`s.current === undefined`）时隐藏会话 tab；切换时各自独立读写 |
 | 待办区 | 分区标题行（标题 + 「共 X 项 · 未完成 Y」+「清空已完成」）+ 添加输入行 + 分点列表：勾选/取消（显式传 done，幂等）、双击行内编辑（Enter 保存 / Esc 取消 / 失焦保存，空文本忽略）、删除（行悬停出现）、清空已完成（仅移除已完成条目，无已完成时禁用） |
 | 随记区 | 分区标题行（标题 + 保存状态）+ 多行 textarea：自由文本（不限制格式/行数），输入防抖 600ms 自动保存 + 失焦立即保存（含切 tab/切会话前的落盘），状态显示「保存中…/已保存」；清空 = 文本置空 |
@@ -36,10 +36,11 @@
 
 1. **不注册模型工具**：不调用 `harness.defineTool` / `tools.register`，模型工具目录中不存在任何 notes 工具。
 2. **不进提示词**：不注册 `systemPrompt` section / context / 变量，小记内容永不进入模型上下文。
-3. **不进会话日志**：数据只写入独立存储域 `notes`（`~/.dsh/storages/notes.json`），不写入 session log、不产生会话事件（无 `ctx.on` 监听、不 append 事件）。
-4. **不注册 Remote 服务**：Host API 是普通 HTTP 路由（`webServer.register`），仅浏览器 `fetch` 调用；不经 typert gateway / api-remotes 暴露。
+3. **物理双通道**：数据只写入独立存储域文件 `~/.dsh/storages/notes.json`；对话消息则写在 `~/.dsh/sessions/<cwd>/<sessionId>/session.jsonl.zstd`（追加式 zstd JSONL）。agent 的整个生命周期（加载、恢复、搜索、导出）只接触会话日志通道，**结构上接触不到** notes 文件（详见 §3.6）。
+4. **不注册 Remote 服务**：Host API 是普通 HTTP 路由（`webServer.register`，`/api/dsh-notes`），仅浏览器同源 `fetch` 调用；不经 typert gateway / api-remotes 暴露。
 5. **键只是字符串**：会话小记仅以 `sessionId` 字符串为键，与 agent 会话对象无引用关系；客户端读取当前会话 id 仅发生在浏览器展示层（`useSessions`）。
 6. **不依赖 agent 生命周期**：插件只依赖 `webServer` 与 `storageDomain`，与 agent/session 服务解耦。
+7. **无鉴权面**：HTTP API 无登录/密钥，仅依赖 DSH Web 本机绑定（默认 `127.0.0.1:3080`），部署层网络边界即访问边界。
 
 ## 3. 已核实的运行时事实（实现时不再猜测）
 
@@ -52,9 +53,12 @@
 | `shell.overlay` | list / root | `{id, order, label}` | 无 | `useSessions: SnapshotSelectorHook<SessionListState>`、`useWorkspaces` |
 
 - 竖栏是 `shell.overlay` 的一个**常驻条目**（始终注册，展开/折叠只切换自身渲染），新 id 会追加为新 cell，不覆盖现有项。
-- overlay 层本身点击穿透，竖栏根元素需 `pointer-events: auto`；层位于所有列之上、脱离滚动容器。
-- 定位：`position: fixed; left: <侧栏宽度>; bottom: 0; width: 280px; height: min(62vh, 560px)`。侧栏宽度随折叠变化（宽 260 / 窄轨 56），用 `ResizeObserver` 监听侧栏 DOM 元素（`document.querySelector` 定位侧栏节点）持续校正 `left`。
-- 折叠态：竖栏仅渲染一个胶囊按钮（「📝 小记」+ 展开箭头，`margin: 0 8px 8px`），点击展开并聚焦待办输入框；折叠状态存于浏览器（localStorage）或插件本地状态。
+- overlay 层本身点击穿透（`.pI_x6G_overlayLayer`：`position:absolute; inset:0` 覆盖整个 AppFrame，z-index 20），竖栏根元素需 `pointer-events: auto`。
+- 定位（**实现已落地，无硬编码产品选择器**）：
+  - 竖栏为 `position: absolute; bottom: 0; width: 280px; height: min(62vh, 560px)`，定位上下文即 overlay 层；
+  - `left` 取自 AppFrame 的 `grid-template-columns` 第一列（侧栏列，`<sidebar>px minmax(0,1fr) <details>px`，帧元素通过 `dockEl.parentElement…` 向上查找 display:grid 的节点获得）；
+  - `MutationObserver`（`attributeFilter: ['style']`）监听帧的内联样式变更 + `window.resize`，跟随侧栏折叠动画与拖拽调宽。
+- 折叠态：竖栏仅渲染一个胶囊按钮（「📝 小记」+ 展开箭头，`margin: 0 8px 8px`），点击展开并聚焦待办输入框；折叠状态存浏览器 `localStorage['dsh-notes.collapsed']`（UI 偏好，不进 notes.json）。
 - 注册范式（参考 `dsh-deepseek-quota/lib/client.js` 的 slots 用法）：
 
 ```js
@@ -100,6 +104,20 @@ const passthroughSchema = {
 
 > 注意：`defineDomain` 会校验 `global.schema.safeParse(null)`，**接受 null 会直接抛错**（null 是后端「从未写入」哨兵值），因此上面的 null 分支必须存在。
 
+**完整写入链路（已实现，均在本机核实）：**
+
+```
+浏览器操作 → POST /api/dsh-notes → 插件内 promise 串行链
+           → 域写链（读-改-写） → json 后端 → ~/.dsh/storages/notes.json
+```
+
+1. **落盘位置**：JSON 后端根目录为 `dshHomePath('storages')`（`~/.dsh/storages`），域 `notes` 对应文件 `notes.json`（与 `workspace.json`、`session_projcache.json` 同目录同机制）。
+2. **写入顺序（域写链）**：先 `await` 后端落盘 → 成功后才改内存 → 最后发 `domain/changed` 事件；后端写失败则内存不动，读（内存态）与磁盘永不背离。
+3. **原子性（JSON 后端）**：整文件重写 —— 先写临时文件再 `rename()` 覆盖目标，任意时刻磁盘上都是完整文件，崩溃不会留下半截 JSON。
+4. **单写者串行**：插件内所有变更依次经过同一条 promise 链（读-改-写不交错）；会话记录用 `table.put` 整体替换，全局用 `global.set` 整体替换。
+5. **文件生命周期**：文件在**首次写入时创建**（`global` 首次 `set` 或某会话首次 `put`）；在此之前磁盘上不存在 `notes.json`（已实测）。`initial` 只在内存侧生效，不落盘。
+6. **折叠状态不落盘**：`localStorage['dsh-notes.collapsed']` 属浏览器 UI 偏好，与 notes.json 无关。
+
 ### 3.4 Host API 通道
 
 - 独立插件（非动态 cordis 插件）的浏览器↔宿主通信使用 `webServer.register` 注册 HTTP 路由（`dsh-deepseek-quota` 的 `GET /api/deepseek-quota` 即此通道）。
@@ -112,6 +130,21 @@ const passthroughSchema = {
   - alias 令牌同样按 `body` / `body[data-ds-dark-theme]` 两段定义，**一律引用 static 令牌或 rgba**，组件侧只允许消费 alias。
 - 字体：`--dsw-font-family`（含 PingFang SC / Microsoft YaHei）、`--ds-font-family-code`；动效 `--ds-ease-in-out`、`--ds-transition-duration*`。
 - 本插件实际用到的 alias 令牌清单见 §7。
+
+### 3.6 对话消息持久化（对照，本机已核实）
+
+小记与对话消息是**两条完全独立的持久化通道**：
+
+| | 小记（本插件） | 对话消息（DSH 原生） |
+| --- | --- | --- |
+| 位置 | `~/.dsh/storages/notes.json` | `~/.dsh/sessions/<cwd 编码>/<sessionId>/session.jsonl.zstd` |
+| 后端 | storage-domain（JSON 后端，`dsh-storage-json`） | session-persistence-jsonl（`dsh-session-persistence-jsonl`，root = `dshHomePath('sessions')`） |
+| 格式 | 人类可读 JSON（整文件快照） | 追加式 JSONL，zstd 压缩 |
+| 写入 | 原子整文件替换 + 域写链 | 追加事件（append-only） |
+| 读取加速 | 无（文件即真相） | 投影缓存 `~/.dsh/storages/session_projcache.json`（只加速，非真相） |
+
+- agent 的加载/恢复/搜索/导出全部基于会话日志通道；小记文件不在该通道内，模型与工具均无法触达（§2.1 第 3 点的物理基础）。
+- 本插件不监听会话事件（无 `ctx.on`）、不 append 会话日志、不产生任何 `SessionEvent`。
 
 ## 4. 架构
 
@@ -135,7 +168,8 @@ const passthroughSchema = {
 
 - 单一事实来源：Host 域内存态（写链保证落盘先于内存变更）；浏览器每次变更后直接用返回的快照渲染。
 - 多窗口同步：mutation 返回全量快照 + window focus 时重拉；第一版不做实时推送。
-- **Agent 隔离**：无模型工具、无 prompt 注入、数据不进会话日志；插件与 agent/session 服务完全解耦（见 §2.1）。
+- **两条持久化通道互不相交**：小记 → `storages/notes.json`；对话 → `sessions/…/session.jsonl.zstd`（§3.6）。agent 只接触后者。
+- **Agent 隔离**：无模型工具、无 prompt 注入、不产生会话事件；插件与 agent/session 服务完全解耦（见 §2.1）。
 - 插件不接触会话日志，只以 sessionId 为键。
 
 ## 5. 数据模型
@@ -262,21 +296,21 @@ dsh web                            # 重启生效（bundle 层启动时组合）
 
 ## 9. 里程碑与验收
 
-| 里程碑 | 内容 | 验收 |
-| --- | --- | --- |
-| M0 原型 | `prototype/index.html` 可交互评审（本阶段） | 明暗切换、宽/窄侧栏、竖栏部分高度 + 折叠/展开、待办/随记双分区、随记自动保存、完整交互、localStorage 模拟持久化 |
-| M1 实现 | src 双 half 落地（§4-§6） | `pnpm build` 通过；安装后侧栏与对话区之间出现常驻竖栏 |
-| M2 功能验收 | 全局/会话待办增删改查、随记自动保存、tab 跟随、折叠/展开（状态持久化）、空态/错误态、窄轨侧栏下竖栏位置跟随 | 对照 §2 功能清单逐项 |
-| M3 持久化验收 | 刷新/重启后数据仍在 | `~/.dsh/storages/notes.json` 结构符合 §5 |
-| M4 主题验收 | 明暗双主题下所有状态对比 | 与原型一致，无硬编码色值残留 |
-| M5 隔离验收 | agent 不可见 | 工具目录无 notes 工具；会话日志/提示词中无小记内容；HTTP API 无鉴权面（仅本机 Web） |
+| 里程碑 | 内容 | 验收 | 状态 |
+| --- | --- | --- | --- |
+| M0 原型 | `prototype/index.html` 可交互评审 | 明暗切换、宽/窄侧栏、竖栏部分高度 + 折叠/展开、待办/随记双分区、随记自动保存、完整交互、localStorage 模拟持久化 | ✅ 完成 |
+| M1 实现 | src 双 half 落地（§4-§6），`pnpm build` 产出 lib | 构建通过；`dsh plugin --profile web add .` 安装成功并登记 bundle | ✅ 完成 |
+| M2 功能验收 | 全局/会话待办增删改查、随记自动保存、tab 跟随、折叠/展开（状态持久化）、空态/错误态、窄轨侧栏下竖栏位置跟随 | 对照 §2 功能清单逐项 | ⏳ 待重启 DSH 后验收 |
+| M3 持久化验收 | 刷新/重启后数据仍在 | `~/.dsh/storages/notes.json` 结构符合 §5 | ⏳ 待验收 |
+| M4 主题验收 | 明暗双主题下所有状态对比 | 与原型一致，无硬编码色值残留 | ⏳ 待验收 |
+| M5 隔离验收 | agent 不可见 | 工具目录无 notes 工具；会话日志/提示词中无小记内容；HTTP API 无鉴权面（仅本机 Web） | ⏳ 待验收 |
 
 ## 10. 已知限制与风险
 
 - 动态重启恢复：dsh-notes 是安装型插件（非常驻动态 cordis 插件），宿主重启后由组合自动恢复；数据在 `notes.json` 不受影响。
 - 多窗口实时同步：第一版为「mutation 快照 + focus 重拉」，多窗口存在秒级延迟。
-- overlay 竖栏遮挡：竖栏以 fixed 层覆盖对话列左缘；仅部分高度（底部对齐），且对话内容居中（max-width 860）时通常落在留白区，窄窗口下可能盖住对话区左下内容 —— 已知取舍；折叠后遮挡归零。
-- 侧栏折叠：竖栏 `left` 跟随侧栏实测宽度（ResizeObserver），宽 260 / 窄轨 56 均正确对齐。
+- overlay 竖栏遮挡：竖栏以浮层覆盖对话列左缘；仅部分高度（底部对齐），且对话内容居中（max-width 860）时通常落在留白区，窄窗口下可能盖住对话区左下内容 —— 已知取舍；折叠后遮挡归零。
+- 侧栏折叠/拖拽：竖栏 `left` 跟随 AppFrame 网格第一列（MutationObserver 监听帧内联样式），宽/窄/任意拖宽均正确对齐。
 - 会话删除/归档：对应小记记录保留（无清理逻辑），无害遗留，后续版本可加。
 - 结构演进：`NoteScope = { todos, memo }` 为 v1 结构；后续如需扩展（如条目类型、排序），bump 域 version 并提供迁移。
 - 存储文件损坏：域 open 抛 `malformed-medium`，API 返回 `storage-unavailable`，UI 显示错误条，不影响宿主其他功能；schema 演进时 bump 域 version。
