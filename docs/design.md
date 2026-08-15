@@ -9,23 +9,23 @@
 - **全局小记**：不分会话，长期跟随用户（如「给 API 充值」「整理文档」）。
 - **会话小记**：以会话为单位隔离（如「LaptopAxisCheck」会话的待办），切换会话时自动跟随。
 
-条目分两种类型：
+面板内容区分为**两个部分**（每个作用域各自独立）：
 
-- **待办（todo）**：可勾选完成/取消、参与「清空已完成」、计入入口徽标。
-- **备忘（note）**：纯文本记录，不参与勾选与清空，不计入徽标（如电话、链接、会议纪要）。
+- **待办区（todo）**：分点待办列表 —— 每行一个可勾选条目，支持添加/勾选/行内编辑/删除/清空已完成，未完成数计入入口徽标。
+- **随记区（memo）**：自由多行文本 —— 随意输入、不需要分点（如电话、链接、会议纪要），输入防抖 + 失焦自动保存，不参与勾选统计、不计入徽标。
 
-用户已确认的范围：**两类纯文本条目**（添加 / 勾选 / 行内编辑 / 删除 / 清空已完成），**仅 UI**，且**内容不暴露给 agent**（隔离保证见 §2.1）。
+用户已确认的范围：**待办（分点）+ 随记（自由文本）两类内容**，**仅 UI**，且**内容不暴露给 agent**（隔离保证见 §2.1）。
 
 ## 2. 功能清单
 
 | 能力 | 说明 |
 | --- | --- |
-| 入口按钮 | `sidebar.footer.action` 新增 cell（id: `notes-panel`）；宽模式显示「📝 小记」+ 未完成徽标，窄轨只显示图标；徽标 = 全局 + 当前会话未完成**待办**数之和（备忘不计入） |
-| 弹出面板 | `shell.overlay` 注册，固定左下角（`left: 8px; bottom: 8px`），宽 320、`max-height: 60vh`，`pointer-events: auto`（overlay 层本身点击穿透）；右上 × 或 Esc 关闭；再次点入口切换 |
-| Tab | 「全局」/「本会话（会话标题）」；无当前会话（`s.current === undefined`）时隐藏会话 tab |
-| 条目类型 | 输入行「待办 / 备忘」切换添加类型：待办渲染勾选框、备忘渲染圆点标记；`kind` 存于条目（`'todo' \| 'note'`），旧数据缺省视为待办 |
-| 条目操作 | 添加（Enter/按钮）；勾选/取消（仅待办，显式传 done，幂等）；双击行内编辑（Enter 保存 / Esc 取消 / 失焦保存，空文本忽略）；删除（行悬停出现）；清空已完成（仅移除已完成的**待办**，备忘保留；无已完成待办时禁用） |
-| 空/错状态 | 空列表提示文案；host 存储不可用时面板顶部错误条，UI 不崩溃 |
+| 入口按钮 | `sidebar.footer.action` 新增 cell（id: `notes-panel`）；宽模式显示「📝 小记」+ 未完成徽标，窄轨只显示图标；徽标 = 全局 + 当前会话未完成**待办**数之和（随记不计入） |
+| 弹出面板 | `shell.overlay` 注册，固定左下角（`left: 8px; bottom: 8px`），宽 320、`height: min(62vh, 560px)`，`pointer-events: auto`（overlay 层本身点击穿透）；右上 × 或 Esc 关闭；再次点入口切换 |
+| Tab | 「全局」/「本会话（会话标题）」；无当前会话（`s.current === undefined`）时隐藏会话 tab；切换时各自独立读写 |
+| 待办区 | 分区标题行（标题 + 「共 X 项 · 未完成 Y」+「清空已完成」）+ 添加输入行 + 分点列表：勾选/取消（显式传 done，幂等）、双击行内编辑（Enter 保存 / Esc 取消 / 失焦保存，空文本忽略）、删除（行悬停出现）、清空已完成（仅移除已完成条目，无已完成时禁用） |
+| 随记区 | 分区标题行（标题 + 保存状态）+ 多行 textarea：自由文本（不限制格式/行数），输入防抖 600ms 自动保存 + 失焦立即保存（含关面板/Esc/切 tab/切会话前的落盘），状态显示「保存中…/已保存」；清空 = 文本置空 |
+| 空/错状态 | 待办空列表提示；host 存储不可用时面板顶部错误条，UI 不崩溃 |
 | 主题 | 全部使用 `--dsw-alias-*` 语义令牌，明暗由 `body[data-ds-dark-theme]` 自动适配（见 §7） |
 | Agent 隔离 | 小记内容对 agent 完全不可见（见 §2.1） |
 
@@ -133,16 +133,20 @@ const passthroughSchema = {
 
 ## 5. 数据模型
 
-```ts
-type NoteKind = 'todo' | 'note'
+每个作用域（全局 / 每个会话）是一个独立 NoteScope：
 
-interface NoteItem {
+```ts
+interface TodoItem {
   id: string        // `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-  kind: NoteKind    // 待办（可勾选）或 备忘（纯文本）；旧数据缺省视为 'todo'
   text: string
-  done: boolean     // 仅对 kind='todo' 有意义
+  done: boolean
   createdAt: number // epoch ms
   updatedAt: number
+}
+
+interface NoteScope {
+  todos: TodoItem[] // 待办区：分点待办
+  memo: string      // 随记区：自由多行文本（空串 = 无内容）
 }
 ```
 
@@ -152,8 +156,8 @@ interface NoteItem {
 DomainSpec {
   name: 'notes',
   version: 1,
-  global: { schema: passthroughSchema, initial: { items: [] } },
-  tables: { sessions: domainTable(passthroughSchema) },  // key = sessionId, value = { items: NoteItem[] }
+  global: { schema: passthroughSchema, initial: { todos: [], memo: '' } },
+  tables: { sessions: domainTable(passthroughSchema) },  // key = sessionId, value = NoteScope
 }
 ```
 
@@ -162,18 +166,19 @@ DomainSpec {
 ```json
 {
   "unit": { "name": "notes", "version": 1 },
-  "global": { "items": [ { "id": "...", "kind": "todo", "text": "...", "done": false, "createdAt": 0, "updatedAt": 0 } ] },
-  "tables": { "sessions": { "<sessionId>": { "items": [] } } }
+  "global": { "todos": [ { "id": "...", "text": "...", "done": false, "createdAt": 0, "updatedAt": 0 } ], "memo": "" },
+  "tables": { "sessions": { "<sessionId>": { "todos": [], "memo": "" } } }
 }
 ```
 
 变更语义：
 
-- 添加：`text.trim()` 为空则忽略；`kind` 缺省视为 `'todo'`，非法值拒绝；追加到列表**尾部**。
-- 编辑：空文本忽略该次编辑（保留原文）；`kind` 不可通过编辑变更（后续版本可加转换）。
-- 勾选：仅对 `kind='todo'` 生效（note 条目忽略该动作）；客户端显式传 `done`（幂等）。
-- 清空已完成：仅移除 `kind='todo' && done` 的条目，备忘永远保留。
-- 徽标/计数：只统计 `kind='todo'` 的未完成数。
+- 添加待办：`text.trim()` 为空则忽略；追加到列表**尾部**。
+- 编辑待办：空文本忽略该次编辑（保留原文）。
+- 勾选：客户端显式传 `done`（幂等）。
+- 清空已完成：仅移除 `done === true` 的待办；随记不受影响。
+- 随记：`set-memo` 以文本**整体替换**（可为空串 = 清空），不区分行；自动保存由客户端防抖 + 失焦触发。
+- 徽标/计数：只统计 `todos` 中未完成的条目。
 - 并发：所有变更走插件内 promise 串行链；`sessions` 表写入可用 `table.update(key, fn)` 原子 RMW。
 
 ## 6. Host API 契约
@@ -183,18 +188,19 @@ DomainSpec {
 `GET /api/dsh-notes?sessionId=<id>` —— 状态快照：
 
 ```json
-{ "ok": true, "global": { "items": [...] }, "session": { "items": [...] } | null, "counts": { "globalOpen": 2, "sessionOpen": 1 } }
+{ "ok": true, "global": { "todos": [...], "memo": "" }, "session": { "todos": [...], "memo": "" } | null, "counts": { "globalOpen": 2, "sessionOpen": 1 } }
 ```
 
 `POST /api/dsh-notes` —— 动作，body：
 
 | action | 附加字段 | 行为 |
 | --- | --- | --- |
-| `add` | `scope`, `sessionId?`, `text`, `kind?` | 添加（空文本忽略；`kind` 缺省 `'todo'`，仅允许 `'todo'\|'note'`） |
-| `toggle` | `scope`, `sessionId?`, `id`, `done: boolean` | 勾选/取消（幂等；仅对 `kind='todo'` 生效） |
+| `add` | `scope`, `sessionId?`, `text` | 添加待办（空文本忽略） |
+| `toggle` | `scope`, `sessionId?`, `id`, `done: boolean` | 勾选/取消（幂等） |
 | `edit` | `scope`, `sessionId?`, `id`, `text` | 行内编辑（空文本忽略） |
-| `delete` | `scope`, `sessionId?`, `id` | 删除 |
-| `clear-done` | `scope`, `sessionId?` | 移除全部已完成**待办**（备忘保留） |
+| `delete` | `scope`, `sessionId?`, `id` | 删除待办 |
+| `clear-done` | `scope`, `sessionId?` | 移除全部已完成待办 |
+| `set-memo` | `scope`, `sessionId?`, `text` | 整体替换随记文本（空串 = 清空） |
 
 - `scope: 'global'` 时 `sessionId` 必须缺省；`scope: 'session'` 时 `sessionId` 必须为非空字符串，否则 `{ok: false, error: 'bad-args'}`。
 - 成功返回 `{ok: true, state: <同 GET 的快照>}`；存储域不可用返回 `{ok: false, error: 'storage-unavailable'}`。
@@ -245,9 +251,9 @@ dsh-notes/
 
 | 里程碑 | 内容 | 验收 |
 | --- | --- | --- |
-| M0 原型 | `prototype/index.html` 可交互评审（本阶段） | 明暗切换、宽/窄侧栏、待办/备忘双类型、完整面板交互、localStorage 模拟持久化 |
+| M0 原型 | `prototype/index.html` 可交互评审（本阶段） | 明暗切换、宽/窄侧栏、待办/随记双分区、随记自动保存、完整面板交互、localStorage 模拟持久化 |
 | M1 实现 | src 双 half 落地（§4-§6） | `pnpm build` 通过；安装后左下角出现入口 |
-| M2 功能验收 | 全局/会话增删改查、待办/备忘、徽标、空态/错误态 | 对照 §2 功能清单逐项 |
+| M2 功能验收 | 全局/会话待办增删改查、随记自动保存、徽标、空态/错误态 | 对照 §2 功能清单逐项 |
 | M3 持久化验收 | 刷新/重启后数据仍在 | `~/.dsh/storages/notes.json` 结构符合 §5 |
 | M4 主题验收 | 明暗双主题下所有状态对比 | 与原型一致，无硬编码色值残留 |
 | M5 隔离验收 | agent 不可见 | 工具目录无 notes 工具；会话日志/提示词中无小记内容；HTTP API 无鉴权面（仅本机 Web） |
@@ -257,7 +263,7 @@ dsh-notes/
 - 动态重启恢复：dsh-notes 是安装型插件（非常驻动态 cordis 插件），宿主重启后由组合自动恢复；数据在 `notes.json` 不受影响。
 - 多窗口实时同步：第一版为「mutation 快照 + focus 重拉」，多窗口存在秒级延迟。
 - 会话删除/归档：对应小记记录保留（无清理逻辑），无害遗留，后续版本可加。
-- 条目类型演进：`kind` 字段向后兼容（旧数据缺省视为 `'todo'`）；条目类型转换（todo↔note）留待后续版本。
+- 结构演进：`NoteScope = { todos, memo }` 为 v1 结构；后续如需扩展（如条目类型、排序），bump 域 version 并提供迁移。
 - 存储文件损坏：域 open 抛 `malformed-medium`，API 返回 `storage-unavailable`，UI 显示错误条，不影响宿主其他功能；schema 演进时 bump 域 version。
 - zod 透传 schema 不做内容校验：数据全部由插件自身写入，风险可控；如未来需要强校验，可引入运行时 zod 构建路径。
 

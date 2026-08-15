@@ -555,7 +555,7 @@ body.rail .foot-quota .rail-only { display: inline; }
   left: 8px;
   bottom: 8px;
   width: 320px;
-  max-height: min(60vh, 540px);
+  height: min(62vh, 560px);
   display: flex;
   flex-direction: column;
   background: var(--dsw-alias-bg-overlay);
@@ -618,28 +618,6 @@ body.rail .foot-quota .rail-only { display: inline; }
   gap: 6px;
   padding: 0 12px 8px;
 }
-.np-mode {
-  flex: none;
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--dsw-alias-bg-layer-2);
-  border: 1px solid var(--dsw-alias-border-l1);
-}
-.np-mode-btn {
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 11.5px;
-  color: var(--dsw-alias-label-secondary);
-  white-space: nowrap;
-  transition: background var(--ds-transition-duration-fast) var(--ds-ease-in-out), color var(--ds-transition-duration-fast) var(--ds-ease-in-out);
-}
-.np-mode-btn.active {
-  background: var(--dsw-alias-button-ghost-active-fill);
-  color: var(--dsw-alias-label-primary);
-  font-weight: 500;
-}
 .np-input {
   flex: 1;
   min-width: 0;
@@ -667,7 +645,7 @@ body.rail .foot-quota .rail-only { display: inline; }
 .np-add:hover { opacity: 0.88; }
 .np-add:disabled { opacity: 0.45; cursor: default; }
 
-.np-list { flex: 1; overflow-y: auto; padding: 2px 8px 6px; min-height: 60px; }
+.np-list { max-height: 28vh; overflow-y: auto; padding: 2px 8px 6px; }
 .np-item {
   display: flex;
   align-items: center;
@@ -705,16 +683,6 @@ body.rail .foot-quota .rail-only { display: inline; }
   padding: 1px 0;
 }
 .np-item.done .np-text { color: var(--dsw-alias-label-tertiary); text-decoration: line-through; }
-
-.np-dot {
-  flex: none;
-  width: 7px;
-  height: 7px;
-  margin: 0 4.5px;
-  border-radius: 999px;
-  background: var(--dsw-alias-brand-primary);
-  opacity: 0.55;
-}
 
 .np-edit {
   flex: 1;
@@ -760,15 +728,22 @@ body.rail .foot-quota .rail-only { display: inline; }
   font-size: 12px;
 }
 
-.np-foot {
+/* ---- 分区：待办 / 随记 ---- */
+.np-section { display: flex; flex-direction: column; min-height: 0; }
+.np-sec-memo { flex: 1; border-top: 1px solid var(--dsw-alias-border-l1); }
+.np-sec-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 12px;
-  border-top: 1px solid var(--dsw-alias-border-l1);
-  font-size: 11.5px;
+  padding: 8px 12px 6px;
+}
+.np-sec-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   color: var(--dsw-alias-label-tertiary);
 }
+.np-sec-count { font-size: 11px; color: var(--dsw-alias-label-tertiary); }
 .np-clear {
   margin-left: auto;
   font-size: 11.5px;
@@ -779,6 +754,25 @@ body.rail .foot-quota .rail-only { display: inline; }
 }
 .np-clear:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover-danger); color: var(--dsw-alias-state-error-primary); }
 .np-clear:disabled { opacity: 0.4; cursor: default; }
+
+.np-memo {
+  flex: 1;
+  min-height: 88px;
+  margin: 0 12px 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-specific-input-major);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12.5px;
+  line-height: 1.55;
+  resize: none;
+  outline: none;
+  transition: border-color var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+}
+.np-memo::placeholder { color: var(--dsw-alias-label-tertiary); }
+.np-memo:focus { border-color: var(--dsw-alias-brand-primary); }
+.np-memo-status { font-size: 11px; color: var(--dsw-alias-label-tertiary); margin-left: auto; }
 
 /* ==========================================================================
    原型工具栏（仅原型演示用，非插件 UI）
@@ -894,19 +888,25 @@ body.rail .foot-quota .rail-only { display: inline; }
     </button>
   </div>
   <div class="np-tabs" id="npTabs"></div>
-  <div class="np-input-row">
-    <div class="np-mode" id="npMode" title="添加类型">
-      <button class="np-mode-btn active" data-kind="todo">待办</button>
-      <button class="np-mode-btn" data-kind="note">备忘</button>
-    </div>
-    <input class="np-input" id="npInput" placeholder="添加待办，回车确认…" maxlength="500" />
-    <button class="np-add" id="npAdd">添加</button>
-  </div>
   <div class="np-error" id="npError" hidden>存储不可用：请检查宿主 storage 域是否就绪。</div>
-  <div class="np-list" id="npList"></div>
-  <div class="np-foot">
-    <span id="npCount"></span>
-    <button class="np-clear" id="npClear">清空已完成</button>
+  <div class="np-section np-sec-todo">
+    <div class="np-sec-head">
+      <span class="np-sec-title">待办</span>
+      <span class="np-sec-count" id="npCount"></span>
+      <button class="np-clear" id="npClear">清空已完成</button>
+    </div>
+    <div class="np-input-row">
+      <input class="np-input" id="npInput" placeholder="添加待办，回车确认…" maxlength="500" />
+      <button class="np-add" id="npAdd">添加</button>
+    </div>
+    <div class="np-list" id="npList"></div>
+  </div>
+  <div class="np-section np-sec-memo">
+    <div class="np-sec-head">
+      <span class="np-sec-title">随记</span>
+      <span class="np-memo-status" id="npMemoStatus"></span>
+    </div>
+    <textarea class="np-memo" id="npMemo" placeholder="随意记录点什么…（自动保存）" spellcheck="false"></textarea>
   </div>
 </div>
 
@@ -921,8 +921,8 @@ body.rail .foot-quota .rail-only { display: inline; }
   <b>dsh-notes 原型</b><br/>
   · 左下角「📝 小记」打开面板，再点/Esc/✕ 关闭<br/>
   · 切换会话看「本会话」tab 跟随<br/>
-  · 输入行切换「待办 / 备忘」添加不同类型<br/>
-  · 双击条目行内编辑；悬停出现删除<br/>
+  · 待办区分点添加；随记区自由文本自动保存<br/>
+  · 双击待办行内编辑；悬停出现删除<br/>
   · 数据存 localStorage（模拟持久化）
 </div>
 
@@ -931,34 +931,36 @@ body.rail .foot-quota .rail-only { display: inline; }
 
 /* ======================================================================
    演示数据与状态（模拟 Host 存储域 notes v1 的快照形状）
+   每个作用域 = { todos: TodoItem[], memo: string }
    ====================================================================== */
-const STORAGE_KEY = 'dsh-notes-prototype-v1'
+const STORAGE_KEY = 'dsh-notes-prototype-v2'
 
 const DEFAULT_DATA = {
-  globalItems: [
-    { id: 'g1', kind: 'todo', text: '整理 dsh-notes 项目文档', done: true, createdAt: 1, updatedAt: 1 },
-    { id: 'g2', kind: 'todo', text: '给 DeepSeek API 充值（余额 ¥43.29）', done: false, createdAt: 2, updatedAt: 2 },
-    { id: 'g3', kind: 'todo', text: '通读 design-platform.css 令牌文档', done: false, createdAt: 3, updatedAt: 3 },
-    { id: 'g4', kind: 'note', text: '周四前提交报销单', done: false, createdAt: 4, updatedAt: 4 },
-    { id: 'g5', kind: 'note', text: '会议纪要：下周一评审 dsh-notes 原型', done: false, createdAt: 5, updatedAt: 5 },
-  ],
+  global: {
+    todos: [
+      { id: 'g1', text: '整理 dsh-notes 项目文档', done: true, createdAt: 1, updatedAt: 1 },
+      { id: 'g2', text: '给 DeepSeek API 充值（余额 ¥43.29）', done: false, createdAt: 2, updatedAt: 2 },
+      { id: 'g3', text: '通读 design-platform.css 令牌文档', done: false, createdAt: 3, updatedAt: 3 },
+    ],
+    memo: '报销单周四前提交\n下周一评审 dsh-notes 原型',
+  },
   sessions: {
-    new:        { title: '新会话', items: [] },
-    laptop:     { title: 'LaptopAxisCheck', items: [
-      { id: 'l1', kind: 'todo', text: '核对笔记本转轴异响录音', done: true, createdAt: 1, updatedAt: 1 },
-      { id: 'l2', kind: 'todo', text: '联系售后确认保修政策', done: false, createdAt: 2, updatedAt: 2 },
-      { id: 'l3', kind: 'note', text: '售后电话 400-820-8820', done: false, createdAt: 3, updatedAt: 3 },
-    ] },
-    cards:      { title: 'dsh插件实时讯息卡片功能...', items: [
-      { id: 'c1', kind: 'todo', text: '梳理讯息卡片的数据流', done: false, createdAt: 1, updatedAt: 1 },
-      { id: 'c2', kind: 'todo', text: '收集参考插件列表', done: true, createdAt: 2, updatedAt: 2 },
-    ] },
-    subagent:   { title: '调整code agent的subagen...', items: [
-      { id: 's1', kind: 'todo', text: '阅读 subagent 当前实现', done: false, createdAt: 1, updatedAt: 1 },
-      { id: 's2', kind: 'todo', text: '对比 spawn / fork 差异', done: false, createdAt: 2, updatedAt: 2 },
-    ] },
-    review:     { title: '审查项目提交', items: [] },
-    changed:    { title: '审查项目更改文件', items: [] },
+    new:    { title: '新会话', todos: [], memo: '' },
+    laptop: { title: 'LaptopAxisCheck', todos: [
+      { id: 'l1', text: '核对笔记本转轴异响录音', done: true, createdAt: 1, updatedAt: 1 },
+      { id: 'l2', text: '联系售后确认保修政策', done: false, createdAt: 2, updatedAt: 2 },
+      { id: 'l3', text: '备份 BIOS 设置与驱动版本', done: false, createdAt: 3, updatedAt: 3 },
+    ], memo: '售后电话 400-820-8820\n转轴在保修期内，可免费更换' },
+    cards: { title: 'dsh插件实时讯息卡片功能...', todos: [
+      { id: 'c1', text: '梳理讯息卡片的数据流', done: false, createdAt: 1, updatedAt: 1 },
+      { id: 'c2', text: '收集参考插件列表', done: true, createdAt: 2, updatedAt: 2 },
+    ], memo: '' },
+    subagent: { title: '调整code agent的subagen...', todos: [
+      { id: 's1', text: '阅读 subagent 当前实现', done: false, createdAt: 1, updatedAt: 1 },
+      { id: 's2', text: '对比 spawn / fork 差异', done: false, createdAt: 2, updatedAt: 2 },
+    ], memo: '' },
+    review:  { title: '审查项目提交', todos: [], memo: '' },
+    changed: { title: '审查项目更改文件', todos: [], memo: '' },
   },
 }
 
@@ -978,37 +980,36 @@ function load() {
   const saved = (() => {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null') } catch { return null }
   })()
-  if (!saved || !saved.globalItems) return defaults()
+  if (!saved || !saved.global) return defaults()
   return {
-    globalItems: saved.globalItems,
+    global: saved.global,
     sessions: Object.assign({}, DEFAULT_DATA.sessions, saved.sessions || {}),
     selected: saved.selected || 'laptop',
     open: false,
     tab: saved.tab || 'global',
-    addKind: saved.addKind === 'note' ? 'note' : 'todo',
     rail: !!saved.rail,
     dark: !!saved.dark,
   }
 }
 function defaults() {
   return {
-    globalItems: DEFAULT_DATA.globalItems.map(clone),
+    global: cloneScope(DEFAULT_DATA.global),
     sessions: Object.fromEntries(
-      Object.entries(DEFAULT_DATA.sessions).map(([k, v]) => [k, { title: v.title, items: v.items.map(clone) }]),
+      Object.entries(DEFAULT_DATA.sessions).map(([k, v]) => [k, { title: v.title, todos: v.todos.map(clone), memo: v.memo }]),
     ),
     selected: 'laptop',
     open: false,
     tab: 'global',
-    addKind: 'todo',
     rail: false,
     dark: false,
   }
 }
-function clone(item) { return { id: item.id, kind: item.kind, text: item.text, done: item.done, createdAt: item.createdAt, updatedAt: item.updatedAt } }
+function cloneScope(s) { return { todos: s.todos.map(clone), memo: s.memo } }
+function clone(item) { return { id: item.id, text: item.text, done: item.done, createdAt: item.createdAt, updatedAt: item.updatedAt } }
 function persist() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    globalItems: state.globalItems, sessions: state.sessions, selected: state.selected,
-    tab: state.tab, addKind: state.addKind, rail: state.rail, dark: state.dark,
+    global: state.global, sessions: state.sessions, selected: state.selected,
+    tab: state.tab, rail: state.rail, dark: state.dark,
   }))
 }
 
@@ -1018,11 +1019,10 @@ function uid() {
 function now() { return Date.now() }
 
 function currentSession() { return state.sessions[state.selected] || null }
-function itemsOf(scope) {
-  return scope === 'global' ? state.globalItems : (currentSession()?.items || [])
+function scopeOf(tab) {
+  return tab === 'global' ? state.global : currentSession()
 }
-function todosOf(items) { return items.filter((it) => it.kind !== 'note') }
-function openCount(items) { return todosOf(items).filter((it) => !it.done).length }
+function openCount(todos) { return todos.filter((it) => !it.done).length }
 
 /* ======================================================================
    渲染
@@ -1048,7 +1048,7 @@ function renderSessions() {
 }
 
 function renderBadge() {
-  const total = openCount(state.globalItems) + openCount(currentSession()?.items || [])
+  const total = openCount(state.global.todos) + openCount(currentSession()?.todos || [])
   const badge = $('notesBadge')
   badge.textContent = String(total)
   badge.classList.toggle('zero', total === 0)
@@ -1072,30 +1072,22 @@ function renderTabs() {
   $('npScopeEm').textContent = state.tab === 'global' ? '全局' : '本会话'
 }
 
-function renderMode() {
-  for (const btn of document.querySelectorAll('#npMode .np-mode-btn')) {
-    btn.classList.toggle('active', btn.dataset.kind === state.addKind)
-  }
-  $('npInput').placeholder = state.addKind === 'todo' ? '添加待办，回车确认…' : '写一条备忘，回车保存…'
-}
-
 function renderList() {
-  const items = itemsOf(state.tab)
+  const scope = scopeOf(state.tab)
+  const todos = scope ? scope.todos : []
   const list = $('npList')
   list.innerHTML = ''
-  if (items.length === 0) {
+  if (todos.length === 0) {
     const empty = document.createElement('div')
     empty.className = 'np-empty'
-    empty.textContent = state.tab === 'session' ? '当前会话还没有内容' : '这里还没有内容'
+    empty.textContent = '还没有待办'
     list.appendChild(empty)
   } else {
-    for (const item of items) list.appendChild(renderItem(item))
+    for (const item of todos) list.appendChild(renderItem(item))
   }
-  const todos = todosOf(items)
-  const notes = items.length - todos.length
-  const doneTodos = todos.filter((it) => it.done).length
-  $('npCount').textContent = `共 ${items.length} 项 · 待办 ${todos.length} · 备忘 ${notes}`
-  $('npClear').disabled = doneTodos === 0
+  const done = todos.filter((it) => it.done).length
+  $('npCount').textContent = `共 ${todos.length} 项 · 未完成 ${todos.length - done}`
+  $('npClear').disabled = done === 0
 }
 
 function renderItem(item) {
@@ -1103,20 +1095,10 @@ function renderItem(item) {
   row.className = 'np-item' + (item.done ? ' done' : '')
   row.dataset.id = item.id
 
-  const leading = item.kind === 'note'
-    ? (() => {
-        const dot = document.createElement('span')
-        dot.className = 'np-dot'
-        dot.title = '备忘'
-        return dot
-      })()
-    : (() => {
-        const check = document.createElement('button')
-        check.className = 'np-check' + (item.done ? ' on' : '')
-        check.title = item.done ? '标记未完成' : '标记完成'
-        check.innerHTML = ICON_CHECK
-        return check
-      })()
+  const check = document.createElement('button')
+  check.className = 'np-check' + (item.done ? ' on' : '')
+  check.title = item.done ? '标记未完成' : '标记完成'
+  check.innerHTML = ICON_CHECK
 
   const text = document.createElement('div')
   text.className = 'np-text'
@@ -1128,17 +1110,56 @@ function renderItem(item) {
   del.title = '删除'
   del.innerHTML = ICON_TRASH
 
-  row.append(leading, text, del)
+  row.append(check, text, del)
   return row
+}
+
+/* 随记：仅在作用域（tab+会话）切换时把文本写入 textarea，避免打断输入 */
+let memoBoundKey = null
+function memoKey() { return state.tab + ':' + state.selected }
+
+function renderMemo(force) {
+  const scope = scopeOf(state.tab)
+  const area = $('npMemo')
+  if (force || memoBoundKey !== memoKey()) {
+    area.value = scope ? scope.memo : ''
+    memoBoundKey = memoKey()
+    setMemoStatus('')
+  }
+}
+
+function setMemoStatus(text) { $('npMemoStatus').textContent = text }
+
+let memoDirty = false
+let memoTimer = null
+
+function saveMemo(immediate) {
+  const scope = scopeOf(state.tab)
+  if (!scope) return
+  if (immediate && memoTimer !== null) { clearTimeout(memoTimer); memoTimer = null }
+  scope.memo = $('npMemo').value
+  persist()
+  if (!immediate && memoDirty) setMemoStatus('已保存')
+}
+
+function onMemoInput() {
+  memoDirty = true
+  setMemoStatus('保存中…')
+  if (memoTimer !== null) clearTimeout(memoTimer)
+  memoTimer = setTimeout(() => { memoTimer = null; saveMemo(false) }, 600)
+}
+
+function onMemoBlur() {
+  if (memoDirty) { saveMemo(true); memoDirty = false; setMemoStatus('已保存') }
 }
 
 function renderPanel() {
   $('notesPanel').hidden = !state.open
   $('notesTrigger').classList.toggle('active', state.open)
   if (!state.open) return
-  renderMode()
   renderTabs()
   renderList()
+  renderMemo(false)
   $('npInput').focus()
 }
 
@@ -1157,18 +1178,25 @@ function renderAll() {
    ====================================================================== */
 
 /* ---- 入口触发 ---- */
+function closePanel() {
+  if (memoDirty) { saveMemo(true); memoDirty = false }
+  state.open = false
+  renderPanel()
+}
+
 $('notesTrigger').addEventListener('click', () => {
-  state.open = !state.open
+  if (state.open) { closePanel(); return }
+  state.open = true
   renderPanel()
 })
 
-$('npClose').addEventListener('click', () => { state.open = false; renderPanel() })
+$('npClose').addEventListener('click', closePanel)
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     const editing = document.querySelector('.np-item .np-edit')
     if (editing) { cancelEdit(editing); return }
-    if (state.open) { state.open = false; renderPanel() }
+    if (state.open) closePanel()
   }
 })
 
@@ -1176,24 +1204,21 @@ document.addEventListener('keydown', (e) => {
 $('npTabs').addEventListener('click', (e) => {
   const tab = e.target.closest('.np-tab')
   if (!tab) return
+  if (tab.dataset.tab === state.tab) return
+  if (memoDirty) { saveMemo(true); memoDirty = false }
   state.tab = tab.dataset.tab
   renderPanel()
 })
 
-/* ---- 添加（待办/备忘 双类型） ---- */
-$('npMode').addEventListener('click', (e) => {
-  const btn = e.target.closest('.np-mode-btn')
-  if (!btn) return
-  state.addKind = btn.dataset.kind
-  renderMode()
-})
-
+/* ---- 添加待办 ---- */
 function addItem() {
   const input = $('npInput')
   const text = input.value.trim()
   if (!text) return
-  const item = { id: uid(), kind: state.addKind, text, done: false, createdAt: now(), updatedAt: now() }
-  itemsOf(state.tab).push(item)
+  const scope = scopeOf(state.tab)
+  if (!scope) return
+  const item = { id: uid(), text, done: false, createdAt: now(), updatedAt: now() }
+  scope.todos.push(item)
   input.value = ''
   renderPanel()
   renderBadge()
@@ -1205,7 +1230,9 @@ $('npInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') addItem
 $('npList').addEventListener('click', (e) => {
   const row = e.target.closest('.np-item')
   if (!row) return
-  const item = itemsOf(state.tab).find((it) => it.id === row.dataset.id)
+  const scope = scopeOf(state.tab)
+  if (!scope) return
+  const item = scope.todos.find((it) => it.id === row.dataset.id)
   if (!item) return
   if (e.target.closest('.np-check')) {
     item.done = !item.done
@@ -1213,8 +1240,8 @@ $('npList').addEventListener('click', (e) => {
     renderPanel()
     renderBadge()
   } else if (e.target.closest('.np-del')) {
-    const idx = itemsOf(state.tab).indexOf(item)
-    if (idx >= 0) itemsOf(state.tab).splice(idx, 1)
+    const idx = scope.todos.indexOf(item)
+    if (idx >= 0) scope.todos.splice(idx, 1)
     renderPanel()
     renderBadge()
   }
@@ -1224,7 +1251,9 @@ $('npList').addEventListener('dblclick', (e) => {
   const text = e.target.closest('.np-text')
   if (!text) return
   const row = text.closest('.np-item')
-  const item = itemsOf(state.tab).find((it) => it.id === row.dataset.id)
+  const scope = scopeOf(state.tab)
+  if (!scope) return
+  const item = scope.todos.find((it) => it.id === row.dataset.id)
   if (!item) return
   startEdit(row, item)
 })
@@ -1262,27 +1291,35 @@ function cancelEdit(input) {
   renderPanel()
 }
 
-/* ---- 清空已完成（仅待办） ---- */
+/* ---- 清空已完成（仅待办区） ---- */
 $('npClear').addEventListener('click', () => {
-  const items = itemsOf(state.tab)
-  const rest = items.filter((it) => it.kind === 'note' || !it.done)
-  if (rest.length === items.length) return
-  if (state.tab === 'global') state.globalItems = rest
-  else if (currentSession()) currentSession().items = rest
+  const scope = scopeOf(state.tab)
+  if (!scope) return
+  const rest = scope.todos.filter((it) => !it.done)
+  if (rest.length === scope.todos.length) return
+  scope.todos = rest
   renderPanel()
   renderBadge()
 })
+
+/* ---- 随记（自由文本，自动保存） ---- */
+$('npMemo').addEventListener('input', onMemoInput)
+$('npMemo').addEventListener('blur', onMemoBlur)
 
 /* ---- 会话切换 / 新会话 ---- */
 $('sessionList').addEventListener('click', (e) => {
   const row = e.target.closest('.session-item')
   if (!row) return
+  if (row.dataset.id === state.selected) return
+  if (memoDirty) { saveMemo(true); memoDirty = false }
   state.selected = row.dataset.id
   state.tab = 'global'
   renderAll()
 })
 
 $('btnNew').addEventListener('click', () => {
+  if (state.selected === 'new' && state.tab === 'global') return
+  if (memoDirty) { saveMemo(true); memoDirty = false }
   state.selected = 'new'
   state.tab = 'global'
   renderAll()
