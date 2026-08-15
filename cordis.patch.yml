@@ -1,0 +1,6 @@
+# dsh-notes bundle：向组合挂载 Host half（持久化存储域 + HTTP API）。
+# 浏览器端由 package.json 的 dsh.client 声明自动进入 boot 图（lib/client.js），
+# 与 dsh-deepseek-quota 同一通道。
+- insert:
+    - id: dsh-notes
+      name: '@dsh-external/dsh-notes'
