@@ -516,18 +516,55 @@ body.rail .foot-quota .rail-only { display: inline; }
 .btn-send svg { width: 14px; height: 14px; }
 
 /* ==========================================================================
-   小记竖栏（常驻显示于侧栏与对话区之间）
-   真实实现：shell.overlay 常驻条目 + fixed 定位（left = 侧栏实测宽度），
-   原型用 flex 列模拟相同视觉
+   小记竖栏（常驻显示于侧栏与对话区之间，部分高度 + 可折叠）
+   真实实现：shell.overlay 常驻条目 + fixed 定位（left = 侧栏实测宽度，
+   bottom: 0，height: min(62vh, 560px)），原型用 flex 列模拟相同视觉
    ========================================================================== */
 .notes-dock {
   flex: none;
   width: 280px;
+  align-self: flex-end;
+  height: min(62vh, 560px);
   display: flex;
   flex-direction: column;
   min-height: 0;
   background: var(--dsw-alias-bg-layer-1);
   border-right: 1px solid var(--dsw-alias-border-l1);
+  transition: height var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+.notes-dock.collapsed {
+  width: auto;
+  height: auto;
+  background: transparent;
+  border-right: none;
+}
+.notes-dock.collapsed .dock-body { display: none; }
+
+/* 折叠后的按钮条（📝 小记，点击展开） */
+.dock-collapsed {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin: 0 8px 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-overlay);
+  border: 1px solid var(--dsw-alias-border-l2);
+  box-shadow: var(--dsh-notes-shadow);
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-in-out), color var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+}
+.notes-dock.collapsed .dock-collapsed { display: flex; }
+.dock-collapsed:hover { background: var(--dsw-alias-interactive-bg-hover-solid); color: var(--dsw-alias-label-primary); }
+.dock-collapsed svg { width: 11px; height: 11px; }
+
+.dock-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
 }
 
 .dock-head {
@@ -538,6 +575,19 @@ body.rail .foot-quota .rail-only { display: inline; }
 }
 .dock-head .np-title { font-size: 13px; font-weight: 600; color: var(--dsw-alias-label-primary); }
 .dock-head .np-title .em { color: var(--dsw-alias-label-tertiary); font-weight: 400; margin-left: 4px; font-size: 11px; }
+.dock-collapse {
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--dsw-alias-label-tertiary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-in-out), color var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+}
+.dock-collapse:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.dock-collapse svg { width: 12px; height: 12px; }
 
 .np-tabs {
   display: flex;
@@ -788,13 +838,21 @@ body.rail .foot-quota .rail-only { display: inline; }
     </div>
   </aside>
 
-  <!-- 小记竖栏：常驻显示于侧栏与对话区之间 -->
+  <!-- 小记竖栏：常驻显示于侧栏与对话区之间，部分高度 + 可折叠 -->
   <section class="notes-dock" id="notesDock">
-    <div class="dock-head">
-      <span class="np-title">小记<span class="em" id="npScopeEm">全局</span></span>
-    </div>
-    <div class="np-tabs" id="npTabs"></div>
-    <div class="np-error" id="npError" hidden>存储不可用：请检查宿主 storage 域是否就绪。</div>
+    <button class="dock-collapsed" id="dockExpand" title="展开小记">
+      <span>📝</span><span>小记</span>
+      <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7.5L6 3.5l4 4"/></svg>
+    </button>
+    <div class="dock-body">
+      <div class="dock-head">
+        <span class="np-title">小记<span class="em" id="npScopeEm">全局</span></span>
+        <button class="dock-collapse" id="dockCollapse" title="折叠小记">
+          <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4.5L6 8.5l4-4"/></svg>
+        </button>
+      </div>
+      <div class="np-tabs" id="npTabs"></div>
+      <div class="np-error" id="npError" hidden>存储不可用：请检查宿主 storage 域是否就绪。</div>
     <div class="np-section np-sec-todo">
       <div class="np-sec-head">
         <span class="np-sec-title">待办</span>
@@ -813,6 +871,7 @@ body.rail .foot-quota .rail-only { display: inline; }
         <span class="np-memo-status" id="npMemoStatus"></span>
       </div>
       <textarea class="np-memo" id="npMemo" placeholder="随意记录点什么…（自动保存）" spellcheck="false"></textarea>
+    </div>
     </div>
   </section>
 
@@ -856,7 +915,8 @@ body.rail .foot-quota .rail-only { display: inline; }
 <div class="proto-hint" id="protoHint">
   <button class="x" id="hintClose">✕</button>
   <b>dsh-notes 原型</b><br/>
-  · 竖栏常驻显示在侧栏与对话区之间，无按钮/弹窗<br/>
+  · 竖栏常驻侧栏与对话区之间，仅占部分高度（底部对齐）<br/>
+  · 右上「▾」折叠成按钮，再点按钮展开<br/>
   · 切换会话看「本会话」tab 跟随<br/>
   · 待办区分点添加；随记区自由文本自动保存<br/>
   · 双击待办行内编辑；悬停出现删除<br/>
@@ -923,6 +983,7 @@ function load() {
     sessions: Object.assign({}, DEFAULT_DATA.sessions, saved.sessions || {}),
     selected: saved.selected || 'laptop',
     tab: saved.tab || 'global',
+    collapsed: !!saved.collapsed,
     rail: !!saved.rail,
     dark: !!saved.dark,
   }
@@ -935,6 +996,7 @@ function defaults() {
     ),
     selected: 'laptop',
     tab: 'global',
+    collapsed: false,
     rail: false,
     dark: false,
   }
@@ -944,7 +1006,7 @@ function clone(item) { return { id: item.id, text: item.text, done: item.done, c
 function persist() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     global: state.global, sessions: state.sessions, selected: state.selected,
-    tab: state.tab, rail: state.rail, dark: state.dark,
+    tab: state.tab, collapsed: state.collapsed, rail: state.rail, dark: state.dark,
   }))
 }
 
@@ -1081,6 +1143,9 @@ function onMemoBlur() {
 }
 
 function renderDock() {
+  const dock = $('notesDock')
+  dock.classList.toggle('collapsed', state.collapsed)
+  if (state.collapsed) return
   renderTabs()
   renderList()
   renderMemo(false)
@@ -1103,6 +1168,21 @@ document.addEventListener('keydown', (e) => {
     const editing = document.querySelector('.np-item .np-edit')
     if (editing) cancelEdit(editing)
   }
+})
+
+/* ---- 折叠 / 展开 ---- */
+$('dockCollapse').addEventListener('click', () => {
+  if (memoDirty) { saveMemo(true); memoDirty = false }
+  state.collapsed = true
+  renderDock()
+  persist()
+})
+
+$('dockExpand').addEventListener('click', () => {
+  state.collapsed = false
+  renderDock()
+  $('npInput').focus()
+  persist()
 })
 
 /* ---- Tab 切换 ---- */

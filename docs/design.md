@@ -20,8 +20,9 @@
 
 | 能力 | 说明 |
 | --- | --- |
-| 常驻竖栏 | 固定显示在**左侧边栏与中间对话区之间**：宽 280、通高（top/bottom 0），无独立入口按钮、无弹窗、不可关闭，随页面常驻（无会话 hero 视图时仍显示，仅全局 tab） |
-| 定位机制 | 真实实现：`shell.overlay` **常驻条目** + `position: fixed`，`left` = 侧栏实测宽度（`ResizeObserver` 跟随宽/窄折叠），`pointer-events: auto`；原型用 flex 列模拟相同视觉 |
+| 常驻竖栏 | 固定显示在**左侧边栏与中间对话区之间**：宽 280、**部分高度**（`min(62vh, 560px)`）、**底部对齐**，无独立入口按钮、无弹窗；无会话 hero 视图时仍显示（仅全局 tab） |
+| 折叠/展开 | 竖栏头部右侧「▾」按钮折叠；折叠后在同位置显示「📝 小记」按钮条（圆角胶囊，点击展开），折叠状态持久化；折叠/展开前先落盘随记 |
+| 定位机制 | 真实实现：`shell.overlay` **常驻条目** + `position: fixed`，`left` = 侧栏实测宽度（`ResizeObserver` 跟随宽/窄折叠），`bottom: 0`、`height: min(62vh, 560px)`，`pointer-events: auto`；折叠时仅渲染按钮条；原型用 flex 列模拟相同视觉 |
 | Tab | 「全局」/「本会话（会话标题）」；无当前会话（`s.current === undefined`）时隐藏会话 tab；切换时各自独立读写 |
 | 待办区 | 分区标题行（标题 + 「共 X 项 · 未完成 Y」+「清空已完成」）+ 添加输入行 + 分点列表：勾选/取消（显式传 done，幂等）、双击行内编辑（Enter 保存 / Esc 取消 / 失焦保存，空文本忽略）、删除（行悬停出现）、清空已完成（仅移除已完成条目，无已完成时禁用） |
 | 随记区 | 分区标题行（标题 + 保存状态）+ 多行 textarea：自由文本（不限制格式/行数），输入防抖 600ms 自动保存 + 失焦立即保存（含切 tab/切会话前的落盘），状态显示「保存中…/已保存」；清空 = 文本置空 |
@@ -50,9 +51,10 @@
 | --- | --- | --- | --- | --- |
 | `shell.overlay` | list / root | `{id, order, label}` | 无 | `useSessions: SnapshotSelectorHook<SessionListState>`、`useWorkspaces` |
 
-- 竖栏是 `shell.overlay` 的一个**常驻条目**（始终渲染、不随交互显隐），新 id 会追加为新 cell，不覆盖现有项。
+- 竖栏是 `shell.overlay` 的一个**常驻条目**（始终注册，展开/折叠只切换自身渲染），新 id 会追加为新 cell，不覆盖现有项。
 - overlay 层本身点击穿透，竖栏根元素需 `pointer-events: auto`；层位于所有列之上、脱离滚动容器。
-- 定位：`position: fixed; left: <侧栏宽度>; top: 0; bottom: 0; width: 280px`。侧栏宽度随折叠变化（宽 260 / 窄轨 56），用 `ResizeObserver` 监听侧栏 DOM 元素（`document.querySelector` 定位侧栏节点）持续校正 `left`。
+- 定位：`position: fixed; left: <侧栏宽度>; bottom: 0; width: 280px; height: min(62vh, 560px)`。侧栏宽度随折叠变化（宽 260 / 窄轨 56），用 `ResizeObserver` 监听侧栏 DOM 元素（`document.querySelector` 定位侧栏节点）持续校正 `left`。
+- 折叠态：竖栏仅渲染一个胶囊按钮（「📝 小记」+ 展开箭头，`margin: 0 8px 8px`），点击展开并聚焦待办输入框；折叠状态存于浏览器（localStorage）或插件本地状态。
 - 注册范式（参考 `dsh-deepseek-quota/lib/client.js` 的 slots 用法）：
 
 ```js
@@ -253,9 +255,9 @@ dsh-notes/
 
 | 里程碑 | 内容 | 验收 |
 | --- | --- | --- |
-| M0 原型 | `prototype/index.html` 可交互评审（本阶段） | 明暗切换、宽/窄侧栏、竖栏常驻（无按钮/弹窗）、待办/随记双分区、随记自动保存、完整交互、localStorage 模拟持久化 |
+| M0 原型 | `prototype/index.html` 可交互评审（本阶段） | 明暗切换、宽/窄侧栏、竖栏部分高度 + 折叠/展开、待办/随记双分区、随记自动保存、完整交互、localStorage 模拟持久化 |
 | M1 实现 | src 双 half 落地（§4-§6） | `pnpm build` 通过；安装后侧栏与对话区之间出现常驻竖栏 |
-| M2 功能验收 | 全局/会话待办增删改查、随记自动保存、tab 跟随、空态/错误态、窄轨侧栏下竖栏位置跟随 | 对照 §2 功能清单逐项 |
+| M2 功能验收 | 全局/会话待办增删改查、随记自动保存、tab 跟随、折叠/展开（状态持久化）、空态/错误态、窄轨侧栏下竖栏位置跟随 | 对照 §2 功能清单逐项 |
 | M3 持久化验收 | 刷新/重启后数据仍在 | `~/.dsh/storages/notes.json` 结构符合 §5 |
 | M4 主题验收 | 明暗双主题下所有状态对比 | 与原型一致，无硬编码色值残留 |
 | M5 隔离验收 | agent 不可见 | 工具目录无 notes 工具；会话日志/提示词中无小记内容；HTTP API 无鉴权面（仅本机 Web） |
@@ -264,7 +266,7 @@ dsh-notes/
 
 - 动态重启恢复：dsh-notes 是安装型插件（非常驻动态 cordis 插件），宿主重启后由组合自动恢复；数据在 `notes.json` 不受影响。
 - 多窗口实时同步：第一版为「mutation 快照 + focus 重拉」，多窗口存在秒级延迟。
-- overlay 竖栏遮挡：竖栏以 fixed 层覆盖对话列左缘；对话内容居中（max-width 860）时通常落在留白区，但窄窗口下可能盖住对话区左缘内容 —— 已知取舍，原型/实现均按 280px 宽。
+- overlay 竖栏遮挡：竖栏以 fixed 层覆盖对话列左缘；仅部分高度（底部对齐），且对话内容居中（max-width 860）时通常落在留白区，窄窗口下可能盖住对话区左下内容 —— 已知取舍；折叠后遮挡归零。
 - 侧栏折叠：竖栏 `left` 跟随侧栏实测宽度（ResizeObserver），宽 260 / 窄轨 56 均正确对齐。
 - 会话删除/归档：对应小记记录保留（无清理逻辑），无害遗留，后续版本可加。
 - 结构演进：`NoteScope = { todos, memo }` 为 v1 结构；后续如需扩展（如条目类型、排序），bump 域 version 并提供迁移。
