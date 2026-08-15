@@ -2,15 +2,16 @@
 //
 // 职责：
 //   1. 打开持久化存储域 `notes`（backend json → ~/.dsh/storages/notes.json）：
-//        global:  { todos: TodoItem[], memo: string }   —— 全局小记
-//        table sessions: <sessionId> -> NoteScope        —— 会话小记
+//        global:     { todos: TodoItem[], memo: string }   —— 全局小记
+//        table workspaces: <workspaceId> -> NoteScope      —— 工作区小记
 //      schema 用鸭子类型透传实现（本包零运行时依赖，不 import zod；
 //      数据全部由插件自身写入，透传即可；global 的 safeParse(null) 必须失败，
 //      因为 null 是后端「从未写入」哨兵值，defineDomain 会据此校验）。
 //   2. 经 ctx.webServer 挂 HTTP API（同 dsh-deepseek-quota 通道）：
-//        GET  /api/dsh-notes?sessionId=…   -> 状态快照
-//        POST /api/dsh-notes               -> { action, scope, sessionId?, ... }
+//        GET  /api/dsh-notes?workspaceId=…   -> 状态快照
+//        POST /api/dsh-notes                 -> { action, scope, workspaceId?, ... }
 //      动作：add / toggle / edit / delete / clear-done / set-memo
+//           / pin（置顶）/ reorder（拖拽排序）/ undo-delete（撤销上次删除）
 //   3. 所有变更走插件内 promise 串行链（读-改-写），返回值只含标量拷贝。
 
 export const name = 'dsh-notes'
@@ -20,6 +21,7 @@ export const inject = ['webServer']
 const TODO_TEXT_MAX = 500
 const MEMO_MAX = 20000
 const ROUTE_PATH = '/api/dsh-notes'
+const UNDO_CAP = 100
 
 const passthroughSchema = {
   parse(value) {
@@ -35,7 +37,7 @@ const notesDomainSpec = {
   name: 'notes',
   version: 1,
   global: { schema: passthroughSchema, initial: { todos: [], memo: '' } },
-  tables: { sessions: { valueSchema: passthroughSchema } },
+  tables: { workspaces: { valueSchema: passthroughSchema } },
 }
 
 function copyScope(scope) {
@@ -44,6 +46,7 @@ function copyScope(scope) {
       id: item.id,
       text: item.text,
       done: item.done,
+      pinned: item.pinned === true,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     })),
@@ -61,16 +64,16 @@ function openCount(todos) {
   return count
 }
 
-function snapshotOf(domain, sessionId) {
+function snapshotOf(domain, workspaceId) {
   const globalScope = domain.global.get()
-  const table = domain.table('sessions')
-  const sessionScope = sessionId !== null ? table.get(sessionId) : undefined
+  const table = domain.table('workspaces')
+  const workspaceScope = workspaceId !== null ? table.get(workspaceId) : undefined
   return {
     global: copyScope(globalScope),
-    session: sessionScope === undefined ? null : copyScope(sessionScope),
+    workspace: workspaceScope === undefined ? null : copyScope(workspaceScope),
     counts: {
       globalOpen: openCount(globalScope.todos),
-      sessionOpen: sessionScope === undefined ? 0 : openCount(sessionScope.todos),
+      workspaceOpen: workspaceScope === undefined ? 0 : openCount(workspaceScope.todos),
     },
   }
 }
@@ -89,6 +92,24 @@ export function apply(ctx, config = {}) {
     const result = chain.then(job)
     chain = result.then(() => {}, () => {})
     return result
+  }
+
+  // 撤销记录：scopeKey -> { removed: TodoItem[], indices: number[] }（内存态，
+  // 仅覆盖本次进程；任何同作用域其他变更会使旧撤销失效）
+  const undoMap = new Map()
+  function undoKeyOf(scope, workspaceId) {
+    return scope === 'global' ? 'global' : `workspace:${workspaceId}`
+  }
+  function recordUndo(key, removed) {
+    undoMap.delete(key) // 重置 LRU 位置
+    undoMap.set(key, removed)
+    while (undoMap.size > UNDO_CAP) {
+      const oldest = undoMap.keys().next().value
+      undoMap.delete(oldest)
+    }
+  }
+  function clearUndo(key) {
+    undoMap.delete(key)
   }
 
   const domainPromise = storageDomain.open(notesDomainSpec).catch((error) => {
@@ -112,28 +133,28 @@ export function apply(ctx, config = {}) {
 
   function parseScope(body) {
     const scope = body.scope
-    if (scope === 'global') return { scope, sessionId: null }
-    if (scope === 'session') {
-      const sessionId = typeof body.sessionId === 'string' && body.sessionId !== '' ? body.sessionId : null
-      if (sessionId === null) return { error: 'bad-args' }
-      return { scope, sessionId }
+    if (scope === 'global') return { scope, workspaceId: null }
+    if (scope === 'workspace') {
+      const workspaceId = typeof body.workspaceId === 'string' && body.workspaceId !== '' ? body.workspaceId : null
+      if (workspaceId === null) return { error: 'bad-args' }
+      return { scope, workspaceId }
     }
     return { error: 'bad-args' }
   }
 
-  function mutate(scope, sessionId, fn) {
+  function mutate(scope, workspaceId, fn) {
     return enqueue(async () => {
       const domain = await requireDomain()
       if (scope === 'global') {
         const next = fn(copyScope(domain.global.get()))
         await domain.global.set(next)
-        return snapshotOf(domain, sessionId)
+        return snapshotOf(domain, workspaceId)
       }
-      const table = domain.table('sessions')
-      const current = table.get(sessionId)
+      const table = domain.table('workspaces')
+      const current = table.get(workspaceId)
       const next = fn(current === undefined ? emptyScope() : copyScope(current))
-      await table.put(sessionId, next)
-      return snapshotOf(domain, sessionId)
+      await table.put(workspaceId, next)
+      return snapshotOf(domain, workspaceId)
     })
   }
 
@@ -141,23 +162,26 @@ export function apply(ctx, config = {}) {
     const trimmed = String(text).trim().slice(0, TODO_TEXT_MAX)
     if (trimmed === '') return todos
     const now = Date.now()
-    const item = { id: `${now.toString(36)}-${Math.random().toString(36).slice(2, 10)}`, text: trimmed, done: false, createdAt: now, updatedAt: now }
+    const item = { id: `${now.toString(36)}-${Math.random().toString(36).slice(2, 10)}`, text: trimmed, done: false, pinned: false, createdAt: now, updatedAt: now }
     return [...todos, item]
   }
 
   function applyAction(action, body) {
     const parsed = parseScope(body)
     if (parsed.error !== undefined) return Promise.resolve({ error: parsed.error })
-    const { scope, sessionId } = parsed
+    const { scope, workspaceId } = parsed
+    const undoKey = undoKeyOf(scope, workspaceId)
 
     switch (action) {
       case 'add': {
         if (typeof body.text !== 'string') return Promise.resolve({ error: 'bad-args' })
-        return mutate(scope, sessionId, (current) => ({ ...current, todos: pushTodo(current.todos, body.text) }))
+        clearUndo(undoKey)
+        return mutate(scope, workspaceId, (current) => ({ ...current, todos: pushTodo(current.todos, body.text) }))
       }
       case 'toggle': {
         if (typeof body.id !== 'string' || typeof body.done !== 'boolean') return Promise.resolve({ error: 'bad-args' })
-        return mutate(scope, sessionId, (current) => ({
+        clearUndo(undoKey)
+        return mutate(scope, workspaceId, (current) => ({
           ...current,
           todos: current.todos.map((item) =>
             item.id === body.id ? { ...item, done: body.done, updatedAt: Date.now() } : item,
@@ -168,21 +192,100 @@ export function apply(ctx, config = {}) {
         if (typeof body.id !== 'string' || typeof body.text !== 'string') return Promise.resolve({ error: 'bad-args' })
         const text = body.text.trim().slice(0, TODO_TEXT_MAX)
         if (text === '') return Promise.resolve({ error: 'bad-args' })
-        return mutate(scope, sessionId, (current) => ({
+        clearUndo(undoKey)
+        return mutate(scope, workspaceId, (current) => ({
           ...current,
           todos: current.todos.map((item) => (item.id === body.id ? { ...item, text, updatedAt: Date.now() } : item)),
         }))
       }
       case 'delete': {
         if (typeof body.id !== 'string') return Promise.resolve({ error: 'bad-args' })
-        return mutate(scope, sessionId, (current) => ({ ...current, todos: current.todos.filter((item) => item.id !== body.id) }))
+        return mutate(scope, workspaceId, (current) => {
+          const removed = []
+          const indices = []
+          const todos = current.todos.filter((item, index) => {
+            if (item.id === body.id) {
+              removed.push(item)
+              indices.push(index)
+              return false
+            }
+            return true
+          })
+          if (removed.length > 0) recordUndo(undoKey, { removed, indices })
+          return { ...current, todos }
+        })
       }
       case 'clear-done': {
-        return mutate(scope, sessionId, (current) => ({ ...current, todos: current.todos.filter((item) => !item.done) }))
+        return mutate(scope, workspaceId, (current) => {
+          const removed = []
+          const indices = []
+          const todos = current.todos.filter((item, index) => {
+            if (item.done) {
+              removed.push(item)
+              indices.push(index)
+              return false
+            }
+            return true
+          })
+          if (removed.length > 0) recordUndo(undoKey, { removed, indices })
+          return { ...current, todos }
+        })
+      }
+      case 'pin': {
+        if (typeof body.id !== 'string' || typeof body.pinned !== 'boolean') return Promise.resolve({ error: 'bad-args' })
+        clearUndo(undoKey)
+        return mutate(scope, workspaceId, (current) => {
+          let found = false
+          const todos = current.todos.map((item) => {
+            if (item.id !== body.id) return item
+            found = true
+            return { ...item, pinned: body.pinned, updatedAt: Date.now() }
+          })
+          if (!found) return current
+          // 置顶 = 移到数组头部（显示时置顶组在前，稳定排序保持组内顺序）
+          const item = todos.find((it) => it.id === body.id)
+          return {
+            ...current,
+            todos: body.pinned ? [item, ...todos.filter((it) => it.id !== body.id)] : todos,
+          }
+        })
+      }
+      case 'reorder': {
+        if (!Array.isArray(body.orderedIds) || body.orderedIds.some((id) => typeof id !== 'string')) {
+          return Promise.resolve({ error: 'bad-args' })
+        }
+        clearUndo(undoKey)
+        return mutate(scope, workspaceId, (current) => {
+          const byId = new Map(current.todos.map((item) => [item.id, item]))
+          const ordered = []
+          for (const id of body.orderedIds) {
+            const item = byId.get(id)
+            if (item !== undefined) {
+              ordered.push(item)
+              byId.delete(id)
+            }
+          }
+          for (const item of byId.values()) ordered.push(item) // 未列出的兜底追加
+          return { ...current, todos: ordered }
+        })
       }
       case 'set-memo': {
         if (typeof body.text !== 'string') return Promise.resolve({ error: 'bad-args' })
-        return mutate(scope, sessionId, (current) => ({ ...current, memo: body.text.slice(0, MEMO_MAX) }))
+        clearUndo(undoKey)
+        return mutate(scope, workspaceId, (current) => ({ ...current, memo: body.text.slice(0, MEMO_MAX) }))
+      }
+      case 'undo-delete': {
+        const record = undoMap.get(undoKey)
+        if (record === undefined) return Promise.resolve({ error: 'no-undo' })
+        undoMap.delete(undoKey)
+        return mutate(scope, workspaceId, (current) => {
+          const todos = [...current.todos]
+          for (let i = 0; i < record.removed.length; i += 1) {
+            const at = Math.min(record.indices[i], todos.length)
+            todos.splice(at, 0, record.removed[i])
+          }
+          return { ...current, todos }
+        })
       }
       default:
         return Promise.resolve({ error: 'bad-args' })
@@ -207,10 +310,10 @@ export function apply(ctx, config = {}) {
         handler: async (req, res) => {
           if (req.method === 'GET' || req.method === 'HEAD') {
             const query = new URL(req.url ?? '/', 'http://local').searchParams
-            const sessionId = query.get('sessionId')
+            const workspaceId = query.get('workspaceId')
             try {
               const domain = await requireDomain()
-              sendJson(res, 200, { ok: true, ...snapshotOf(domain, sessionId !== null && sessionId !== '' ? sessionId : null) })
+              sendJson(res, 200, { ok: true, ...snapshotOf(domain, workspaceId !== null && workspaceId !== '' ? workspaceId : null) })
             } catch (error) {
               sendJson(res, 503, { ok: false, error: 'storage-unavailable' })
             }
@@ -234,7 +337,7 @@ export function apply(ctx, config = {}) {
           try {
             const result = await applyAction(action, body)
             if (result.error !== undefined) {
-              sendJson(res, 400, { ok: false, error: result.error })
+              sendJson(res, result.error === 'no-undo' ? 404 : 400, { ok: false, error: result.error })
               return
             }
             sendJson(res, 200, { ok: true, state: result })

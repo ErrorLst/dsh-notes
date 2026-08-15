@@ -6,9 +6,10 @@
 //      AppFrame），left = AppFrame 网格第一列（侧栏列）实测宽度；
 //      从自身 DOM 向上找到 grid 帧元素，解析 gridTemplateColumns，
 //      MutationObserver 跟随侧栏折叠/拖拽（不硬编码任何产品选择器）。
-//   2. 竖栏内容：全局/本会话 tab + 待办区（添加/勾选/双击编辑/删除/清空）
-//      + 随记区（自由文本，防抖 600ms + 失焦自动保存）。
-//   3. 数据经 fetch('/api/dsh-notes') 读写；会话 id 来自 useSessions。
+//   2. 竖栏内容：全局/本工作区 tab + 待办区（添加/勾选/双击编辑/删除/清空/
+//      置顶/拖拽排序/撤销删除）+ 随记区（自由文本，防抖 600ms + 失焦自动保存）。
+//   3. 数据经 fetch('/api/dsh-notes') 读写；当前工作区来自 useWorkspaces
+//      （recentWorkspaceId = 最近活跃工作区）。
 //   4. 样式只使用 --dsw-alias-* 语义令牌（原型 prototype/index.html 为基准）。
 
 const React = require('react')
@@ -17,10 +18,13 @@ const { useState, useEffect, useRef, useCallback } = React
 const STYLE_TAG_ID = 'dsh-notes-dock-style'
 const COLLAPSED_KEY = 'dsh-notes.collapsed'
 const MEMO_DEBOUNCE_MS = 600
+const UNDO_TTL_MS = 5000
 const ICON_CHECK =
   '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.5L5 9l4.5-6"/></svg>'
 const ICON_TRASH =
   '<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h10M5.5 4V2.8A.8.8 0 016.3 2h1.4a.8.8 0 01.8.8V4M3.5 4l.6 7a1 1 0 001 1h3.8a1 1 0 001-1l.6-7"/><path d="M6 6.5v3M8 6.5v3"/></svg>'
+const ICON_PIN =
+  '<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8.6 1.4l4 4-1.4 1.4-1.2-.6-2.2 2.2.6 1.2-1.4 1.4-3-3L3.4 9l-.8-.8 2.6-2.6-1.2-.6 1.4-1.4 1.2.6 2.2-2.2-.6-1.2 1.4-1.4z"/></svg>'
 const ICON_COLLAPSE =
   '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4.5L6 8.5l4-4"/></svg>'
 const ICON_EXPAND =
@@ -165,12 +169,17 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 .np-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 5px 6px;
   border-radius: 8px;
   transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
 }
 .np-item:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.np-item.dragging { opacity: 0.45; }
+.np-item.drop-target { box-shadow: inset 0 2px 0 var(--dsw-alias-brand-primary); }
+.np-item.pinned .np-text { color: var(--dsw-alias-label-primary); }
+.np-item.pinned .np-text::after { content: ' 📌'; font-size: 10px; }
+
 .np-check {
   flex: none;
   width: 16px;
@@ -208,6 +217,22 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   font-size: 12.5px;
   outline: none;
 }
+.np-pin {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  color: var(--dsw-alias-label-tertiary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), color var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
+}
+.np-item:hover .np-pin, .np-pin.on { opacity: 1; }
+.np-pin:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-brand-primary); }
+.np-pin.on { color: var(--dsw-alias-brand-primary); }
+.np-pin svg { width: 12px; height: 12px; }
 .np-del {
   flex: none;
   width: 20px;
@@ -224,6 +249,30 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 .np-del:hover { background: var(--dsw-alias-interactive-bg-hover-danger); color: var(--dsw-alias-state-error-primary); }
 .np-del svg { width: 12px; height: 12px; }
 .np-empty { padding: 22px 12px; text-align: center; font-size: 12px; color: var(--dsw-alias-label-tertiary); }
+
+.np-undo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 12px 8px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-overlay);
+  border: 1px solid var(--dsw-alias-border-l2);
+  box-shadow: var(--dsh-notes-shadow);
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+.np-undo button {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dsw-alias-brand-primary);
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
+}
+.np-undo button:hover { background: var(--dsw-alias-interactive-bg-hover); }
 
 .np-memo {
   flex: 1;
@@ -246,7 +295,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 `
 
 function scopeOf(data, tab) {
-  return tab === 'global' ? data.global : data.session
+  return tab === 'global' ? data.global : data.workspace
 }
 
 function openCount(todos) {
@@ -256,10 +305,10 @@ function openCount(todos) {
 }
 
 function NotesDock(props) {
-  const useSessions = props.useSessions
-  const current = useSessions((state) => state.current)
-  const currentTitle = useSessions((state) =>
-    state.current !== undefined ? (state.byId[state.current]?.displayTitle ?? state.current) : undefined,
+  const useWorkspaces = props.useWorkspaces
+  const workspaceId = useWorkspaces((state) => state.recentWorkspaceId)
+  const workspaceTitle = useWorkspaces((state) =>
+    state.items.find((item) => item.workspaceId === workspaceId)?.title,
   )
 
   const rootRef = useRef(null)
@@ -268,18 +317,22 @@ function NotesDock(props) {
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem(COLLAPSED_KEY) === '1' } catch { return false }
   })
-  const [data, setData] = useState({ global: { todos: [], memo: '' }, session: null })
+  const [data, setData] = useState({ global: { todos: [], memo: '' }, workspace: null })
   const [error, setError] = useState(null)
   const [tab, setTab] = useState('global')
   const [editing, setEditing] = useState(null) // { id, text }
   const [memoText, setMemoText] = useState('')
   const [memoStatus, setMemoStatus] = useState('')
+  const [undoInfo, setUndoInfo] = useState(null) // { scope, count } ｜ null
+  const [dragId, setDragId] = useState(null)
+  const [dropId, setDropId] = useState(null)
   const editingRef = useRef(null)
   const memoTextRef = useRef('')
   const dirtyRef = useRef(false)
   const memoTimerRef = useRef(null)
-  const dataForRef = useRef(null) // 当前 data 所属的会话 id（null = 全局/无会话）
+  const dataForRef = useRef(null) // 当前 data 所属的工作区 id（null = 无工作区）
   const boundKeyRef = useRef(null) // 已绑定 textarea 的作用域键
+  const undoTimerRef = useRef(null)
 
   /* ---------- 竖栏 left 跟随 AppFrame 网格第一列（侧栏列） ---------- */
   useEffect(() => {
@@ -311,18 +364,18 @@ function NotesDock(props) {
     }
   }, [])
 
-  /* ---------- 数据加载（挂载 / 会话切换 / 窗口聚焦） ---------- */
+  /* ---------- 数据加载（挂载 / 工作区切换 / 窗口聚焦） ---------- */
   useEffect(() => {
     let alive = true
     const load = () => {
-      const query = current !== undefined ? `?sessionId=${encodeURIComponent(current)}` : ''
+      const query = workspaceId !== undefined ? `?workspaceId=${encodeURIComponent(workspaceId)}` : ''
       fetch(`/api/dsh-notes${query}`, { cache: 'no-store' })
         .then((response) => response.json())
         .then((result) => {
           if (!alive) return
           if (result.ok === true) {
-            dataForRef.current = current ?? null
-            setData({ global: result.global, session: result.session })
+            dataForRef.current = workspaceId ?? null
+            setData({ global: result.global, workspace: result.workspace })
             setError(null)
           } else {
             setError(result.error ?? 'load-failed')
@@ -338,7 +391,7 @@ function NotesDock(props) {
       alive = false
       window.removeEventListener('focus', load)
     }
-  }, [current])
+  }, [workspaceId])
 
   const post = useCallback((body) => {
     return fetch('/api/dsh-notes', {
@@ -349,7 +402,7 @@ function NotesDock(props) {
       .then((response) => response.json())
       .then((result) => {
         if (result.ok === true) {
-          setData({ global: result.state.global, session: result.state.session })
+          setData({ global: result.state.global, workspace: result.state.workspace })
           setError(null)
         } else {
           setError(result.error ?? 'action-failed')
@@ -362,14 +415,14 @@ function NotesDock(props) {
       })
   }, [])
 
-  const sessionId = tab === 'session' ? current : undefined
+  const workspaceArg = tab === 'workspace' ? workspaceId : undefined
 
   /* ---------- 随记：防抖保存 ---------- */
   function saveMemoNow() {
     if (!dirtyRef.current) return
     dirtyRef.current = false
     setMemoStatus('已保存')
-    void post({ action: 'set-memo', scope: tab, sessionId, text: memoTextRef.current })
+    void post({ action: 'set-memo', scope: tab, workspaceId: workspaceArg, text: memoTextRef.current })
   }
 
   function onMemoInput(event) {
@@ -391,19 +444,40 @@ function NotesDock(props) {
   }
 
   /* ---------- 作用域切换时同步 textarea（只绑定一次，不打断输入） ---------- */
-  const scopeKey = tab === 'global' ? 'global' : `session:${current ?? ''}`
+  const scopeKey = tab === 'global' ? 'global' : `workspace:${workspaceId ?? ''}`
   useEffect(() => {
-    if (tab === 'session' && (current === undefined || dataForRef.current !== current)) return // 等待当前会话数据到达
-    const effectiveKey = tab === 'global' ? 'global' : `session:${dataForRef.current ?? ''}`
+    if (tab === 'workspace' && (workspaceId === undefined || dataForRef.current !== workspaceId)) return // 等待当前工作区数据到达
+    const effectiveKey = tab === 'global' ? 'global' : `workspace:${dataForRef.current ?? ''}`
     if (boundKeyRef.current === effectiveKey) return
-    const scope = tab === 'global' ? data.global : data.session
-    if (scope === null) return // 会话记录尚不存在
+    const scope = tab === 'global' ? data.global : data.workspace
+    if (scope === null) return // 工作区记录尚不存在
     boundKeyRef.current = effectiveKey
     setMemoText(scope.memo)
     memoTextRef.current = scope.memo
     dirtyRef.current = false
     setMemoStatus('')
   }, [scopeKey, data]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ---------- 撤销（删除/清空后 5s 内可恢复） ---------- */
+  function showUndo(scope, count) {
+    if (undoTimerRef.current !== null) clearTimeout(undoTimerRef.current)
+    setUndoInfo({ scope, count })
+    undoTimerRef.current = setTimeout(() => {
+      undoTimerRef.current = null
+      setUndoInfo(null)
+    }, UNDO_TTL_MS)
+  }
+
+  function undoDelete() {
+    if (undoInfo === null) return
+    const target = undoInfo.scope
+    if (undoTimerRef.current !== null) { clearTimeout(undoTimerRef.current); undoTimerRef.current = null }
+    setUndoInfo(null)
+    void post({ action: 'undo-delete', scope: target, workspaceId: target === 'workspace' ? workspaceId : undefined })
+      .then((result) => {
+        if (result.ok !== true) setError(result.error ?? 'no-undo')
+      })
+  }
 
   /* ---------- 折叠 ---------- */
   function collapse() {
@@ -424,22 +498,72 @@ function NotesDock(props) {
     const text = input.value.trim()
     if (text === '') return
     input.value = ''
-    void post({ action: 'add', scope: tab, sessionId, text })
+    void post({ action: 'add', scope: tab, workspaceId: workspaceArg, text })
   }
 
   function toggleTodo(item) {
-    void post({ action: 'toggle', scope: tab, sessionId, id: item.id, done: !item.done })
+    void post({ action: 'toggle', scope: tab, workspaceId: workspaceArg, id: item.id, done: !item.done })
+  }
+
+  function pinTodo(item) {
+    void post({ action: 'pin', scope: tab, workspaceId: workspaceArg, id: item.id, pinned: !item.pinned })
   }
 
   function deleteTodo(item) {
-    void post({ action: 'delete', scope: tab, sessionId, id: item.id })
+    void post({ action: 'delete', scope: tab, workspaceId: workspaceArg, id: item.id }).then((result) => {
+      if (result.ok === true) showUndo(tab, 1)
+    })
   }
 
+  function clearDone() {
+    const scope = scopeOf(data, tab)
+    const count = scope === null ? 0 : scope.todos.filter((item) => item.done).length
+    void post({ action: 'clear-done', scope: tab, workspaceId: workspaceArg }).then((result) => {
+      if (result.ok === true && count > 0) showUndo(tab, count)
+    })
+  }
+
+  /* ---------- 拖拽排序 ---------- */
+  function onDragStart(event, id) {
+    setDragId(id)
+    try { event.dataTransfer.effectAllowed = 'move' } catch { /* ignore */ }
+  }
+  function onDragOver(event, id) {
+    if (dragId === null || dragId === id) return
+    event.preventDefault()
+    setDropId(id)
+  }
+  function onDrop(event, targetId) {
+    event.preventDefault()
+    const from = dragId
+    setDragId(null)
+    setDropId(null)
+    if (from === null || from === targetId) return
+    const scope = scopeOf(data, tab)
+    if (scope === null) return
+    const todos = scope.todos
+    const display = [...todos.filter((item) => item.pinned), ...todos.filter((item) => !item.pinned)]
+    const fromIndex = display.findIndex((item) => item.id === from)
+    if (fromIndex < 0) return
+    const next = [...display]
+    const [moved] = next.splice(fromIndex, 1)
+    const targetIndex = targetId === null ? next.length : next.findIndex((item) => item.id === targetId)
+    next.splice(targetIndex < 0 ? next.length : targetIndex, 0, moved)
+
+    const pinnedCount = todos.filter((item) => item.pinned).length
+    const movedIndex = next.indexOf(moved)
+    const shouldPin = movedIndex < pinnedCount
+    const updates = []
+    if (moved.pinned !== shouldPin) updates.push(post({ action: 'pin', scope: tab, workspaceId: workspaceArg, id: moved.id, pinned: shouldPin }))
+    updates.push(post({ action: 'reorder', scope: tab, workspaceId: workspaceArg, orderedIds: next.map((item) => item.id) }))
+    void Promise.all(updates)
+  }
+
+  /* ---------- 行内编辑 ---------- */
   function startEdit(item) {
     editingRef.current = { id: item.id, text: item.text }
     setEditing({ id: item.id, text: item.text })
   }
-
   function commitEdit() {
     const edit = editingRef.current
     editingRef.current = null
@@ -447,11 +571,7 @@ function NotesDock(props) {
     if (edit === null) return
     const text = edit.text.trim()
     if (text === '') return
-    void post({ action: 'edit', scope: tab, sessionId, id: edit.id, text })
-  }
-
-  function clearDone() {
-    void post({ action: 'clear-done', scope: tab, sessionId })
+    void post({ action: 'edit', scope: tab, workspaceId: workspaceArg, id: edit.id, text })
   }
 
   /* ---------- 渲染 ---------- */
@@ -469,9 +589,10 @@ function NotesDock(props) {
     )
   }
 
-  const scope = tab === 'session' && data.session === null ? null : scopeOf(data, tab)
+  const scope = tab === 'workspace' && data.workspace === null ? null : scopeOf(data, tab)
   const todos = scope === null ? [] : scope.todos
   const doneCount = todos.filter((item) => item.done).length
+  const displayTodos = [...todos.filter((item) => item.pinned), ...todos.filter((item) => !item.pinned)]
 
   const tabs = [
     React.createElement(
@@ -485,25 +606,25 @@ function NotesDock(props) {
       '全局',
     ),
   ]
-  if (current !== undefined && data.session !== null) {
+  if (workspaceId !== undefined && data.workspace !== null) {
     tabs.push(
       React.createElement(
         'button',
         {
-          key: 'session',
+          key: 'workspace',
           type: 'button',
-          className: 'np-tab' + (tab === 'session' ? ' active' : ''),
-          title: `本会话：${currentTitle ?? ''}`,
-          onClick: () => { if (tab !== 'session') { saveMemoNow(); setTab('session') } },
+          className: 'np-tab' + (tab === 'workspace' ? ' active' : ''),
+          title: `本工作区：${workspaceTitle ?? ''}`,
+          onClick: () => { if (tab !== 'workspace') { saveMemoNow(); setTab('workspace') } },
         },
-        currentTitle ?? '本会话',
+        workspaceTitle ?? '本工作区',
       ),
     )
   }
 
-  const listItems = todos.length === 0
+  const listItems = displayTodos.length === 0
     ? [React.createElement('div', { key: 'empty', className: 'np-empty' }, '还没有待办')]
-    : todos.map((item) => {
+    : displayTodos.map((item) => {
         if (editing !== null && editing.id === item.id) {
           return React.createElement(
             'div',
@@ -525,11 +646,22 @@ function NotesDock(props) {
             }),
           )
         }
+        const rowClass = 'np-item'
+          + (item.done ? ' done' : '')
+          + (item.pinned ? ' pinned' : '')
+          + (dragId === item.id ? ' dragging' : '')
+          + (dropId === item.id ? ' drop-target' : '')
         return React.createElement(
           'div',
           {
             key: item.id,
-            className: 'np-item' + (item.done ? ' done' : ''),
+            className: rowClass,
+            draggable: true,
+            title: '拖拽排序，双击编辑',
+            onDragStart: (event) => onDragStart(event, item.id),
+            onDragOver: (event) => onDragOver(event, item.id),
+            onDrop: (event) => onDrop(event, item.id),
+            onDragEnd: () => { setDragId(null); setDropId(null) },
             onDoubleClick: () => startEdit(item),
           },
           React.createElement('button', {
@@ -539,7 +671,14 @@ function NotesDock(props) {
             onClick: () => toggleTodo(item),
             dangerouslySetInnerHTML: { __html: ICON_CHECK },
           }),
-          React.createElement('div', { className: 'np-text', title: '双击编辑' }, item.text),
+          React.createElement('div', { className: 'np-text' }, item.text),
+          React.createElement('button', {
+            type: 'button',
+            className: 'np-pin' + (item.pinned ? ' on' : ''),
+            title: item.pinned ? '取消置顶' : '置顶',
+            onClick: () => pinTodo(item),
+            dangerouslySetInnerHTML: { __html: ICON_PIN },
+          }),
           React.createElement('button', {
             type: 'button',
             className: 'np-del',
@@ -563,7 +702,7 @@ function NotesDock(props) {
           'span',
           { className: 'np-title' },
           '小记',
-          React.createElement('span', { className: 'em' }, tab === 'global' ? '全局' : '本会话'),
+          React.createElement('span', { className: 'em' }, tab === 'global' ? '全局' : '本工作区'),
         ),
         React.createElement('button', {
           type: 'button',
@@ -608,6 +747,14 @@ function NotesDock(props) {
           React.createElement('button', { type: 'button', className: 'np-add', onClick: addTodo }, '添加'),
         ),
         React.createElement('div', { className: 'np-list' }, ...listItems),
+        undoInfo === null
+          ? null
+          : React.createElement(
+              'div',
+              { className: 'np-undo' },
+              React.createElement('span', null, `已删除 ${undoInfo.count} 项`),
+              React.createElement('button', { type: 'button', onClick: undoDelete }, '撤销'),
+            ),
       ),
       React.createElement(
         'div',

@@ -681,6 +681,9 @@ body.rail .foot-quota .rail-only { display: inline; }
   padding: 1px 0;
 }
 .np-item.done .np-text { color: var(--dsw-alias-label-tertiary); text-decoration: line-through; }
+.np-item.pinned .np-text::after { content: ' 📌'; font-size: 10px; }
+.np-item.dragging { opacity: 0.45; }
+.np-item.drop-target { box-shadow: inset 0 2px 0 var(--dsw-alias-brand-primary); }
 
 .np-edit {
   flex: 1;
@@ -709,6 +712,47 @@ body.rail .foot-quota .rail-only { display: inline; }
 .np-item:hover .np-del { opacity: 1; }
 .np-del:hover { background: var(--dsw-alias-interactive-bg-hover-danger); color: var(--dsw-alias-state-error-primary); }
 .np-del svg { width: 12px; height: 12px; }
+
+.np-pin {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  color: var(--dsw-alias-label-tertiary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--ds-transition-duration-fast) var(--ds-ease-in-out), background var(--ds-transition-duration-fast) var(--ds-ease-in-out), color var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+}
+.np-item:hover .np-pin, .np-pin.on { opacity: 1; }
+.np-pin:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-brand-primary); }
+.np-pin.on { color: var(--dsw-alias-brand-primary); }
+.np-pin svg { width: 12px; height: 12px; }
+
+.np-undo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 12px 8px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-overlay);
+  border: 1px solid var(--dsw-alias-border-l2);
+  box-shadow: var(--dsh-notes-shadow);
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+.np-undo button {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dsw-alias-brand-primary);
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+}
+.np-undo button:hover { background: var(--dsw-alias-interactive-bg-hover); }
 
 .np-empty {
   padding: 22px 12px;
@@ -854,7 +898,7 @@ body.rail .foot-quota .rail-only { display: inline; }
       <div class="msg">
         <span class="who">DeepSeek-V4-Flash</span>
         <div class="tool-chip"><span class="done">✓ 已完成</span><span>工具调用 · read LaptopAxisCheck 文档</span></div>
-        <div class="assistant-text">检查完成。转轴左右两侧间隙正常，无异响；铰链螺丝未见松动。<br/>已将待办项写入会话小记（见左侧「小记」竖栏）。</div>
+        <div class="assistant-text">检查完成。转轴左右两侧间隙正常，无异响；铰链螺丝未见松动。<br/>已将待办项写入工作区小记（见左侧「小记」竖栏）。</div>
       </div>
     </div>
     <div class="composer-wrap">
@@ -899,6 +943,10 @@ body.rail .foot-quota .rail-only { display: inline; }
         <button class="np-add" id="npAdd">添加</button>
       </div>
       <div class="np-list" id="npList"></div>
+      <div class="np-undo" id="npUndo" hidden>
+        <span id="npUndoText"></span>
+        <button type="button">撤销</button>
+      </div>
     </div>
     <div class="np-section np-sec-memo">
       <div class="np-sec-head">
@@ -920,11 +968,11 @@ body.rail .foot-quota .rail-only { display: inline; }
   <button class="x" id="hintClose">✕</button>
   <b>dsh-notes 原型</b><br/>
   · 竖栏常驻侧栏与对话区之间，仅占部分高度（底部对齐）<br/>
+  · 作用域：全局 + 本工作区（dsh-workspace），切换会话不影响小记<br/>
   · 右上「▾」折叠成按钮，再点按钮展开<br/>
-  · 切换会话看「本会话」tab 跟随<br/>
-  · 待办区分点添加；随记区自由文本自动保存<br/>
-  · 双击待办行内编辑；悬停出现删除<br/>
-  · 数据存 localStorage（模拟持久化）
+  · 待办：分点添加、勾选、双击编辑、删除可撤销（5 秒）<br/>
+  · 置顶：悬停行出现 📌；拖拽行调整顺序（拖到置顶区自动置顶）<br/>
+  · 随记区自由文本自动保存；数据存 localStorage（模拟持久化）
 </div>
 
 <script>
@@ -933,35 +981,29 @@ body.rail .foot-quota .rail-only { display: inline; }
 /* ======================================================================
    演示数据与状态（模拟 Host 存储域 notes v1 的快照形状）
    每个作用域 = { todos: TodoItem[], memo: string }
+   作用域：global（全局）+ workspace（工作区，key = workspaceId）
    ====================================================================== */
-const STORAGE_KEY = 'dsh-notes-prototype-v2'
+const STORAGE_KEY = 'dsh-notes-prototype-v3'
 
 const DEFAULT_DATA = {
   global: {
     todos: [
-      { id: 'g1', text: '整理 dsh-notes 项目文档', done: true, createdAt: 1, updatedAt: 1 },
-      { id: 'g2', text: '给 DeepSeek API 充值（余额 ¥43.29）', done: false, createdAt: 2, updatedAt: 2 },
-      { id: 'g3', text: '通读 design-platform.css 令牌文档', done: false, createdAt: 3, updatedAt: 3 },
+      { id: 'g1', text: '整理 dsh-notes 项目文档', done: true, pinned: false, createdAt: 1, updatedAt: 1 },
+      { id: 'g2', text: '给 DeepSeek API 充值（余额 ¥43.29）', done: false, pinned: true, createdAt: 2, updatedAt: 2 },
+      { id: 'g3', text: '通读 design-platform.css 令牌文档', done: false, pinned: false, createdAt: 3, updatedAt: 3 },
     ],
     memo: '报销单周四前提交\n下周一评审 dsh-notes 原型',
   },
-  sessions: {
-    new:    { title: '新会话', todos: [], memo: '' },
-    laptop: { title: 'LaptopAxisCheck', todos: [
-      { id: 'l1', text: '核对笔记本转轴异响录音', done: true, createdAt: 1, updatedAt: 1 },
-      { id: 'l2', text: '联系售后确认保修政策', done: false, createdAt: 2, updatedAt: 2 },
-      { id: 'l3', text: '备份 BIOS 设置与驱动版本', done: false, createdAt: 3, updatedAt: 3 },
-    ], memo: '售后电话 400-820-8820\n转轴在保修期内，可免费更换' },
-    cards: { title: 'dsh插件实时讯息卡片功能...', todos: [
-      { id: 'c1', text: '梳理讯息卡片的数据流', done: false, createdAt: 1, updatedAt: 1 },
-      { id: 'c2', text: '收集参考插件列表', done: true, createdAt: 2, updatedAt: 2 },
-    ], memo: '' },
-    subagent: { title: '调整code agent的subagen...', todos: [
-      { id: 's1', text: '阅读 subagent 当前实现', done: false, createdAt: 1, updatedAt: 1 },
-      { id: 's2', text: '对比 spawn / fork 差异', done: false, createdAt: 2, updatedAt: 2 },
-    ], memo: '' },
-    review:  { title: '审查项目提交', todos: [], memo: '' },
-    changed: { title: '审查项目更改文件', todos: [], memo: '' },
+  workspaces: {
+    'ws-dsh': {
+      title: 'dsh-workspace',
+      todos: [
+        { id: 'l1', text: '核对笔记本转轴异响录音', done: true, pinned: false, createdAt: 1, updatedAt: 1 },
+        { id: 'l2', text: '联系售后确认保修政策', done: false, pinned: true, createdAt: 2, updatedAt: 2 },
+        { id: 'l3', text: '备份 BIOS 设置与驱动版本', done: false, pinned: false, createdAt: 3, updatedAt: 3 },
+      ],
+      memo: '售后电话 400-820-8820\n转轴在保修期内，可免费更换',
+    },
   },
 }
 
@@ -984,7 +1026,7 @@ function load() {
   if (!saved || !saved.global) return defaults()
   return {
     global: saved.global,
-    sessions: Object.assign({}, DEFAULT_DATA.sessions, saved.sessions || {}),
+    workspaces: Object.assign({}, DEFAULT_DATA.workspaces, saved.workspaces || {}),
     selected: saved.selected || 'laptop',
     tab: saved.tab || 'global',
     collapsed: !!saved.collapsed,
@@ -995,8 +1037,8 @@ function load() {
 function defaults() {
   return {
     global: cloneScope(DEFAULT_DATA.global),
-    sessions: Object.fromEntries(
-      Object.entries(DEFAULT_DATA.sessions).map(([k, v]) => [k, { title: v.title, todos: v.todos.map(clone), memo: v.memo }]),
+    workspaces: Object.fromEntries(
+      Object.entries(DEFAULT_DATA.workspaces).map(([k, v]) => [k, { title: v.title, todos: v.todos.map(clone), memo: v.memo }]),
     ),
     selected: 'laptop',
     tab: 'global',
@@ -1006,10 +1048,10 @@ function defaults() {
   }
 }
 function cloneScope(s) { return { todos: s.todos.map(clone), memo: s.memo } }
-function clone(item) { return { id: item.id, text: item.text, done: item.done, createdAt: item.createdAt, updatedAt: item.updatedAt } }
+function clone(item) { return { id: item.id, text: item.text, done: item.done, pinned: item.pinned === true, createdAt: item.createdAt, updatedAt: item.updatedAt } }
 function persist() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    global: state.global, sessions: state.sessions, selected: state.selected,
+    global: state.global, workspaces: state.workspaces, selected: state.selected,
     tab: state.tab, collapsed: state.collapsed, rail: state.rail, dark: state.dark,
   }))
 }
@@ -1019,9 +1061,12 @@ function uid() {
 }
 function now() { return Date.now() }
 
-function currentSession() { return state.sessions[state.selected] || null }
+function currentWorkspace() { return state.workspaces['ws-dsh'] || null }
 function scopeOf(tab) {
-  return tab === 'global' ? state.global : currentSession()
+  return tab === 'global' ? state.global : currentWorkspace()
+}
+function displayTodos(todos) {
+  return [...todos.filter((it) => it.pinned), ...todos.filter((it) => !it.pinned)]
 }
 
 /* ======================================================================
@@ -1030,6 +1075,7 @@ function scopeOf(tab) {
 const $ = (id) => document.getElementById(id)
 const ICON_CHECK = '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.5L5 9l4.5-6"/></svg>'
 const ICON_TRASH = '<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h10M5.5 4V2.8A.8.8 0 016.3 2h1.4a.8.8 0 01.8.8V4M3.5 4l.6 7a1 1 0 001 1h3.8a1 1 0 001-1l.6-7"/><path d="M6 6.5v3M8 6.5v3"/></svg>'
+const ICON_PIN = '<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8.6 1.4l4 4-1.4 1.4-1.2-.6-2.2 2.2.6 1.2-1.4 1.4-3-3L3.4 9l-.8-.8 2.6-2.6-1.2-.6 1.4-1.4 1.2.6 2.2-2.2-.6-1.2 1.4-1.4z"/></svg>'
 
 function renderSessions() {
   const list = $('sessionList')
@@ -1043,26 +1089,33 @@ function renderSessions() {
     li.append(t, time)
     list.appendChild(li)
   }
-  const s = currentSession()
-  $('chatTitle').textContent = s ? s.title : '—'
+  const s = SESSION_ROWS.find((r) => r.id === state.selected)
+  $('chatTitle').textContent = s ? s.label : '—'
 }
 
 function renderTabs() {
   const wrap = $('npTabs')
   wrap.innerHTML = ''
   const tabs = [{ key: 'global', label: '全局' }]
-  const s = currentSession()
-  if (s) tabs.push({ key: 'session', label: s.title })
+  const ws = currentWorkspace()
+  if (ws) tabs.push({ key: 'workspace', label: ws.title })
   for (const t of tabs) {
     const b = document.createElement('button')
     b.className = 'np-tab' + (state.tab === t.key ? ' active' : '')
     b.dataset.tab = t.key
     b.textContent = t.label
-    b.title = t.key === 'session' ? '本会话：' + t.label : '全局小记'
+    b.title = t.key === 'workspace' ? '本工作区：' + t.label : '全局小记'
     wrap.appendChild(b)
   }
-  if (state.tab === 'session' && !s) state.tab = 'global'
-  $('npScopeEm').textContent = state.tab === 'global' ? '全局' : '本会话'
+  if (state.tab === 'workspace' && !ws) state.tab = 'global'
+  $('npScopeEm').textContent = state.tab === 'global' ? '全局' : '本工作区'
+}
+
+function renderUndo() {
+  const bar = $('npUndo')
+  if (state.undo === null) { bar.hidden = true; return }
+  bar.hidden = false
+  $('npUndoText').textContent = `已删除 ${state.undo.count} 项`
 }
 
 function renderList() {
@@ -1076,7 +1129,7 @@ function renderList() {
     empty.textContent = '还没有待办'
     list.appendChild(empty)
   } else {
-    for (const item of todos) list.appendChild(renderItem(item))
+    for (const item of displayTodos(todos)) list.appendChild(renderItem(item, todos))
   }
   const done = todos.filter((it) => it.done).length
   $('npCount').textContent = `共 ${todos.length} 项 · 未完成 ${todos.length - done}`
@@ -1085,8 +1138,14 @@ function renderList() {
 
 function renderItem(item) {
   const row = document.createElement('div')
-  row.className = 'np-item' + (item.done ? ' done' : '')
+  row.className = 'np-item'
+    + (item.done ? ' done' : '')
+    + (item.pinned ? ' pinned' : '')
+    + (state.dragId === item.id ? ' dragging' : '')
+    + (state.dropId === item.id ? ' drop-target' : '')
   row.dataset.id = item.id
+  row.draggable = true
+  row.title = '拖拽排序 · 双击编辑'
 
   const check = document.createElement('button')
   check.className = 'np-check' + (item.done ? ' on' : '')
@@ -1096,20 +1155,24 @@ function renderItem(item) {
   const text = document.createElement('div')
   text.className = 'np-text'
   text.textContent = item.text
-  text.title = '双击编辑'
+
+  const pin = document.createElement('button')
+  pin.className = 'np-pin' + (item.pinned ? ' on' : '')
+  pin.title = item.pinned ? '取消置顶' : '置顶'
+  pin.innerHTML = ICON_PIN
 
   const del = document.createElement('button')
   del.className = 'np-del'
   del.title = '删除'
   del.innerHTML = ICON_TRASH
 
-  row.append(check, text, del)
+  row.append(check, text, pin, del)
   return row
 }
 
-/* 随记：仅在作用域（tab+会话）切换时把文本写入 textarea，避免打断输入 */
+/* 随记：仅在作用域切换时把文本写入 textarea，避免打断输入 */
 let memoBoundKey = null
-function memoKey() { return state.tab + ':' + state.selected }
+function memoKey() { return state.tab }
 
 function renderMemo(force) {
   const scope = scopeOf(state.tab)
@@ -1152,6 +1215,7 @@ function renderDock() {
   if (state.collapsed) return
   renderTabs()
   renderList()
+  renderUndo()
   renderMemo(false)
 }
 
@@ -1196,6 +1260,7 @@ $('npTabs').addEventListener('click', (e) => {
   if (tab.dataset.tab === state.tab) return
   if (memoDirty) { saveMemo(true); memoDirty = false }
   state.tab = tab.dataset.tab
+  state.undo = null
   renderDock()
   $('npInput').focus()
 })
@@ -1207,7 +1272,7 @@ function addItem() {
   if (!text) return
   const scope = scopeOf(state.tab)
   if (!scope) return
-  const item = { id: uid(), text, done: false, createdAt: now(), updatedAt: now() }
+  const item = { id: uid(), text, done: false, pinned: false, createdAt: now(), updatedAt: now() }
   scope.todos.push(item)
   input.value = ''
   renderDock()
@@ -1215,7 +1280,7 @@ function addItem() {
 $('npAdd').addEventListener('click', addItem)
 $('npInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') addItem() })
 
-/* ---- 勾选 / 删除 / 编辑（事件委托） ---- */
+/* ---- 勾选 / 置顶 / 删除 / 编辑（事件委托） ---- */
 $('npList').addEventListener('click', (e) => {
   const row = e.target.closest('.np-item')
   if (!row) return
@@ -1227,12 +1292,22 @@ $('npList').addEventListener('click', (e) => {
     item.done = !item.done
     item.updatedAt = now()
     renderDock()
-    renderBadge()
+  } else if (e.target.closest('.np-pin')) {
+    item.pinned = !item.pinned
+    item.updatedAt = now()
+    if (item.pinned) {
+      const idx = scope.todos.indexOf(item)
+      if (idx > 0) { scope.todos.splice(idx, 1); scope.todos.unshift(item) }
+    }
+    renderDock()
   } else if (e.target.closest('.np-del')) {
     const idx = scope.todos.indexOf(item)
-    if (idx >= 0) scope.todos.splice(idx, 1)
+    if (idx >= 0) {
+      scope.todos.splice(idx, 1)
+      state.undo = { count: 1, removed: [item], indices: [idx] }
+      startUndoTimer()
+    }
     renderDock()
-    renderBadge()
   }
 })
 
@@ -1279,36 +1354,104 @@ function cancelEdit(input) {
   renderDock()
 }
 
-/* ---- 清空已完成（仅待办区） ---- */
-$('npClear').addEventListener('click', () => {
+/* ---- 撤销删除 ---- */
+let undoTimer = null
+function startUndoTimer() {
+  if (undoTimer !== null) clearTimeout(undoTimer)
+  undoTimer = setTimeout(() => {
+    undoTimer = null
+    state.undo = null
+    renderDock()
+  }, 5000)
+}
+
+$('npUndo').addEventListener('click', (e) => {
+  if (!e.target.closest('button')) return
   const scope = scopeOf(state.tab)
-  if (!scope) return
-  const rest = scope.todos.filter((it) => !it.done)
-  if (rest.length === scope.todos.length) return
-  scope.todos = rest
+  const undo = state.undo
+  state.undo = null
+  if (undoTimer !== null) { clearTimeout(undoTimer); undoTimer = null }
+  if (scope && undo) {
+    for (let i = 0; i < undo.removed.length; i += 1) {
+      const at = Math.min(undo.indices[i], scope.todos.length)
+      scope.todos.splice(at, 0, undo.removed[i])
+    }
+  }
   renderDock()
 })
 
-/* ---- 随记（自由文本，自动保存） ---- */
-$('npMemo').addEventListener('input', onMemoInput)
-$('npMemo').addEventListener('blur', onMemoBlur)
+/* ---- 清空已完成 ---- */
+$('npClear').addEventListener('click', () => {
+  const scope = scopeOf(state.tab)
+  if (!scope) return
+  const removed = []
+  const indices = []
+  const rest = []
+  scope.todos.forEach((it, idx) => {
+    if (it.done) { removed.push(it); indices.push(idx) } else { rest.push(it) }
+  })
+  if (removed.length === 0) return
+  scope.todos = rest
+  state.undo = { count: removed.length, removed, indices }
+  startUndoTimer()
+  renderDock()
+})
 
-/* ---- 会话切换 / 新会话 ---- */
+/* ---- 拖拽排序 ---- */
+$('npList').addEventListener('dragstart', (e) => {
+  const row = e.target.closest('.np-item')
+  if (!row) return
+  state.dragId = row.dataset.id
+  renderDock()
+})
+$('npList').addEventListener('dragover', (e) => {
+  const row = e.target.closest('.np-item')
+  if (!row || state.dragId === null) return
+  e.preventDefault()
+  if (state.dropId !== row.dataset.id) { state.dropId = row.dataset.id; renderDock() }
+})
+$('npList').addEventListener('dragend', () => {
+  state.dragId = null
+  state.dropId = null
+  renderDock()
+})
+$('npList').addEventListener('drop', (e) => {
+  const scope = scopeOf(state.tab)
+  const from = state.dragId
+  const target = e.target.closest('.np-item')?.dataset?.id ?? null
+  state.dragId = null
+  state.dropId = null
+  if (!scope || from === null || from === target) { renderDock(); return }
+  e.preventDefault()
+  const todos = scope.todos
+  const display = displayTodos(todos)
+  const fromIndex = display.findIndex((it) => it.id === from)
+  if (fromIndex < 0) { renderDock(); return }
+  const next = [...display]
+  const [moved] = next.splice(fromIndex, 1)
+  const targetIndex = target === null ? next.length : next.findIndex((it) => it.id === target)
+  next.splice(targetIndex < 0 ? next.length : targetIndex, 0, moved)
+  const pinnedCount = todos.filter((it) => it.pinned).length
+  const movedIndex = next.indexOf(moved)
+  const shouldPin = movedIndex < pinnedCount
+  if (moved.pinned !== shouldPin) {
+    moved.pinned = shouldPin
+    if (shouldPin) { next.splice(movedIndex, 1); next.unshift(moved) }
+  }
+  scope.todos = next
+  renderDock()
+})
+
+/* ---- 会话切换 / 新会话（仅影响聊天区演示，小记跟随工作区） ---- */
 $('sessionList').addEventListener('click', (e) => {
   const row = e.target.closest('.session-item')
   if (!row) return
-  if (row.dataset.id === state.selected) return
-  if (memoDirty) { saveMemo(true); memoDirty = false }
   state.selected = row.dataset.id
-  state.tab = 'global'
   renderAll()
 })
 
 $('btnNew').addEventListener('click', () => {
-  if (state.selected === 'new' && state.tab === 'global') return
-  if (memoDirty) { saveMemo(true); memoDirty = false }
   state.selected = 'new'
-  state.tab = 'global'
   renderAll()
 })
 
@@ -1337,6 +1480,7 @@ window.addEventListener('resize', syncDockLeft)
 /* ---- 启动 ---- */
 syncDockLeft()
 renderAll()
+
 </script>
 </body>
 </html>

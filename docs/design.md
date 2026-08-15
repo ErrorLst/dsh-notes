@@ -1,13 +1,15 @@
 # dsh-notes 设计文档
 
-> 版本：0.2 · 状态：**已实现**（M1 完成，M2-M5 待重启 DSH 后验收）· 关联原型：`prototype/index.html`
+> 版本：0.3 · 状态：**已实现**（M1 完成，M2-M5 待重启 DSH 后验收）· 关联原型：`prototype/index.html`
+>
+> 变更记录：0.3 —— 作用域由「会话」改为「工作区」（评审确认）；新增撤销删除、置顶、拖拽排序（§2/§5/§6）。
 
 ## 1. 概述
 
 在 DSH Web 界面中，小记以**常驻竖栏**形式固定显示在左侧边栏与中间对话区之间（无独立入口按钮、无弹窗），持久化记录**不限于 todo** 的轻量内容。数据分两种作用域：
 
-- **全局小记**：不分会话，长期跟随用户（如「给 API 充值」「整理文档」）。
-- **会话小记**：以会话为单位隔离（如「LaptopAxisCheck」会话的待办），切换会话时自动跟随。
+- **全局小记**：不分工作区，长期跟随用户（如「给 API 充值」「整理文档」）。
+- **工作区小记**：以工作区为单位隔离（如「dsh-workspace」的待办），切换工作区/会话时跟随当前工作区（`recentWorkspaceId`，最近活跃工作区）。
 
 竖栏内容分为**两个部分**（每个作用域各自独立）：
 
@@ -23,8 +25,8 @@
 | 常驻竖栏 | 固定显示在**左侧边栏与中间对话区之间**：宽 280、**部分高度**（`min(62vh, 560px)`）、**底部对齐**，无独立入口按钮、无弹窗；无会话 hero 视图时仍显示（仅全局 tab） |
 | 折叠/展开 | 竖栏头部右侧「▾」按钮折叠；折叠后在同位置显示「📝 小记」按钮条（圆角胶囊，点击展开），折叠状态持久化；折叠/展开前先落盘随记 |
 | 定位机制 | 实现与原型一致：`shell.overlay` **常驻条目** + `position: absolute` 浮层（定位上下文 = overlay 层，该层 `inset: 0` 覆盖整个 AppFrame），**不参与布局**（折叠/窗口缩放不影响对话区宽度）；`left` = AppFrame 网格第一列（侧栏列）实测宽度，由组件从自身 DOM 向上找到 grid 帧、解析 `gridTemplateColumns`，`MutationObserver` 跟随侧栏折叠/拖拽；`bottom: 0`、`height: min(62vh, 560px)`、`pointer-events: auto`；折叠时仅渲染按钮条 |
-| Tab | 「全局」/「本会话（会话标题）」；无当前会话（`s.current === undefined`）时隐藏会话 tab；切换时各自独立读写 |
-| 待办区 | 分区标题行（标题 + 「共 X 项 · 未完成 Y」+「清空已完成」）+ 添加输入行 + 分点列表：勾选/取消（显式传 done，幂等）、双击行内编辑（Enter 保存 / Esc 取消 / 失焦保存，空文本忽略）、删除（行悬停出现）、清空已完成（仅移除已完成条目，无已完成时禁用） |
+| Tab | 「全局」/「本工作区（工作区标题）」；无当前工作区（`recentWorkspaceId === undefined`）时隐藏工作区 tab；切换时各自独立读写 |
+| 待办区 | 分区标题行（标题 + 「共 X 项 · 未完成 Y」+「清空已完成」）+ 添加输入行 + 分点列表：勾选/取消（显式传 done，幂等）、双击行内编辑（Enter 保存 / Esc 取消 / 失焦保存，空文本忽略）、删除（行悬停出现）、**置顶**（行悬停出现 📌，置顶项恒在列表顶部且带标记）、**拖拽排序**（HTML5 drag & drop，拖到置顶区自动置顶）、**撤销删除**（删除/清空后 5 秒内显示「撤销」条，恢复原位置；撤销记录为 Host 内存态，任何同作用域新变更使其失效）、清空已完成（仅移除已完成条目，无已完成时禁用） |
 | 随记区 | 分区标题行（标题 + 保存状态）+ 多行 textarea：自由文本（不限制格式/行数），输入防抖 600ms 自动保存 + 失焦立即保存（含切 tab/切会话前的落盘），状态显示「保存中…/已保存」；清空 = 文本置空 |
 | 空/错状态 | 待办空列表提示；host 存储不可用时竖栏顶部错误条，UI 不崩溃 |
 | 主题 | 全部使用 `--dsw-alias-*` 语义令牌，明暗由 `body[data-ds-dark-theme]` 自动适配（见 §7） |
@@ -38,7 +40,7 @@
 2. **不进提示词**：不注册 `systemPrompt` section / context / 变量，小记内容永不进入模型上下文。
 3. **物理双通道**：数据只写入独立存储域文件 `~/.dsh/storages/notes.json`；对话消息则写在 `~/.dsh/sessions/<cwd>/<sessionId>/session.jsonl.zstd`（追加式 zstd JSONL）。agent 的整个生命周期（加载、恢复、搜索、导出）只接触会话日志通道，**结构上接触不到** notes 文件（详见 §3.6）。
 4. **不注册 Remote 服务**：Host API 是普通 HTTP 路由（`webServer.register`，`/api/dsh-notes`），仅浏览器同源 `fetch` 调用；不经 typert gateway / api-remotes 暴露。
-5. **键只是字符串**：会话小记仅以 `sessionId` 字符串为键，与 agent 会话对象无引用关系；客户端读取当前会话 id 仅发生在浏览器展示层（`useSessions`）。
+5. **键只是字符串**：工作区小记仅以 `workspaceId` 字符串为键，与 agent 会话对象无引用关系；客户端读取当前工作区 id 仅发生在浏览器展示层（`useWorkspaces`）。
 6. **不依赖 agent 生命周期**：插件只依赖 `webServer` 与 `storageDomain`，与 agent/session 服务解耦。
 7. **无鉴权面**：HTTP API 无登录/密钥，仅依赖 DSH Web 本机绑定（默认 `127.0.0.1:3080`），部署层网络边界即访问边界。
 
@@ -69,22 +71,22 @@ ctx.slots.inject('shell.overlay', () =>
 
 - `sidebar.footer.action` **不再使用**（无入口按钮方案）。
 
-### 3.2 当前会话与标题
+### 3.2 当前工作区与标题
 
-`SessionListState`（`dsh-client-runtime` 已核实）：
-- `current: SessionId | undefined` —— 当前选中会话；
-- `byId: Record<SessionId, SessionSummary>`，`SessionSummary.displayTitle` 为展示标题。
+`WorkspaceListState`（`dsh-client-runtime` 已核实）：
+- `recentWorkspaceId: WorkspaceId | undefined` —— 最近活跃工作区（跟随会话导航，经 sessions 端口驱动）；
+- `items: readonly WorkspaceView[]`，`WorkspaceView = { workspaceId, path, title, sessionIds, createdAt, updatedAt }`。
 
 取值：
 ```ts
-const current = useSessions((s) => s.current)
-const title   = useSessions((s) => (s.current ? s.byId[s.current]?.displayTitle : undefined))
+const workspaceId = useWorkspaces((s) => s.recentWorkspaceId)
+const title       = useWorkspaces((s) => s.items.find((w) => w.workspaceId === workspaceId)?.title)
 ```
 
 ### 3.3 持久化（存储域）
 
 - Host 服务 `storageDomain`（`ctx.get('storageDomain')`）已挂载；宿主组合配置 `backend: json`，JSON 后端根目录为 `dshHomePath('storages')`（即 `~/.dsh/storages`），域 `notes` 落盘为 `~/.dsh/storages/notes.json`。
-- 域/表名必须匹配 `/^[a-z][a-z0-9_]*$/`。
+- 域/表名必须匹配 `/^[a-z][a-z0-9_]*$/`；**表 `workspaces` 以 `workspaceId` 为键**（作用域 v0.3 由 `sessions` 更名，文件尚未写入过，无需迁移）。
 - 打开/关闭范式（参考 `dsh-message-feedback`）：
 
 ```js
@@ -151,10 +153,10 @@ const passthroughSchema = {
 ```
 ┌─ 浏览器（client bundle, lib/client.js）────────────────────┐
 │  shell.overlay ── 常驻竖栏（侧栏与对话区之间，宽 280）       │
-│    ├ 顶部：小记 + 全局/本会话 tab                            │
-│    ├ 待办区：添加输入 + 分点列表 + 清空已完成                 │
+│    ├ 顶部：小记 + 全局/本工作区 tab                          │
+│    ├ 待办区：添加输入 + 分点列表（勾选/置顶/拖拽/撤销/清空） │
 │    └ 随记区：自由文本 textarea（自动保存）                   │
-│        │  useSessions（当前会话 id + 标题）                  │
+│        │  useWorkspaces（当前工作区 id + 标题）              │
 │        │  fetch('/api/dsh-notes')（读/写，JSON）             │
 └────────┼───────────────────────────────────────────────────┘
          ▼
@@ -170,23 +172,24 @@ const passthroughSchema = {
 - 多窗口同步：mutation 返回全量快照 + window focus 时重拉；第一版不做实时推送。
 - **两条持久化通道互不相交**：小记 → `storages/notes.json`；对话 → `sessions/…/session.jsonl.zstd`（§3.6）。agent 只接触后者。
 - **Agent 隔离**：无模型工具、无 prompt 注入、不产生会话事件；插件与 agent/session 服务完全解耦（见 §2.1）。
-- 插件不接触会话日志，只以 sessionId 为键。
+- 插件不接触会话日志，只以 workspaceId 为键。
 
 ## 5. 数据模型
 
-每个作用域（全局 / 每个会话）是一个独立 NoteScope：
+每个作用域（全局 / 每个工作区）是一个独立 NoteScope：
 
 ```ts
 interface TodoItem {
   id: string        // `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
   text: string
   done: boolean
+  pinned: boolean   // 置顶：显示时恒在列表顶部（稳定排序保持组内顺序）
   createdAt: number // epoch ms
   updatedAt: number
 }
 
 interface NoteScope {
-  todos: TodoItem[] // 待办区：分点待办
+  todos: TodoItem[] // 待办区：分点待办（数组顺序 = 用户排序）
   memo: string      // 随记区：自由多行文本（空串 = 无内容）
 }
 ```
@@ -198,7 +201,7 @@ DomainSpec {
   name: 'notes',
   version: 1,
   global: { schema: passthroughSchema, initial: { todos: [], memo: '' } },
-  tables: { sessions: domainTable(passthroughSchema) },  // key = sessionId, value = NoteScope
+  tables: { workspaces: { valueSchema: passthroughSchema } },  // key = workspaceId, value = NoteScope
 }
 ```
 
@@ -207,45 +210,51 @@ DomainSpec {
 ```json
 {
   "unit": { "name": "notes", "version": 1 },
-  "global": { "todos": [ { "id": "...", "text": "...", "done": false, "createdAt": 0, "updatedAt": 0 } ], "memo": "" },
-  "tables": { "sessions": { "<sessionId>": { "todos": [], "memo": "" } } }
+  "global": { "todos": [ { "id": "...", "text": "...", "done": false, "pinned": false, "createdAt": 0, "updatedAt": 0 } ], "memo": "" },
+  "tables": { "workspaces": { "<workspaceId>": { "todos": [], "memo": "" } } }
 }
 ```
 
 变更语义：
 
-- 添加待办：`text.trim()` 为空则忽略；追加到列表**尾部**。
+- 添加待办：`text.trim()` 为空则忽略；`pinned: false`；追加到列表**尾部**。
 - 编辑待办：空文本忽略该次编辑（保留原文）。
 - 勾选：客户端显式传 `done`（幂等）。
+- 置顶：`pin {id, pinned}` —— 置顶时移到数组头部（显示时置顶组在前），取消置顶保持原位；显示排序 = `[...pinned, ...unpinned]`（稳定）。
+- 拖拽排序：`reorder {orderedIds}` —— 按 id 列表整体重排，未列出的条目兜底追加到尾部。
 - 清空已完成：仅移除 `done === true` 的待办；随记不受影响。
+- 撤销删除：`undo-delete` —— 恢复该作用域最近一次删除/清空移除的条目到**原位置**；撤销记录存 Host 内存（`Map`，上限 100 条，LRU 淘汰），同作用域任何其他变更（add/toggle/edit/delete/clear-done/pin/reorder/set-memo）使其失效；进程重启后无记录（返回 `no-undo`）。
 - 随记：`set-memo` 以文本**整体替换**（可为空串 = 清空），不区分行；自动保存由客户端防抖 + 失焦触发。
 - 计数：待办区标题行「共 X 项 · 未完成 Y」只统计 `todos`。
-- 并发：所有变更走插件内 promise 串行链；`sessions` 表写入可用 `table.update(key, fn)` 原子 RMW。
+- 并发：所有变更走插件内 promise 串行链；`workspaces` 表写入可用 `table.update(key, fn)` 原子 RMW。
 
 ## 6. Host API 契约
 
 基址 `/api/dsh-notes`（`cache-control: no-store`，UTF-8 JSON）。
 
-`GET /api/dsh-notes?sessionId=<id>` —— 状态快照：
+`GET /api/dsh-notes?workspaceId=<id>` —— 状态快照：
 
 ```json
-{ "ok": true, "global": { "todos": [...], "memo": "" }, "session": { "todos": [...], "memo": "" } | null, "counts": { "globalOpen": 2, "sessionOpen": 1 } }
+{ "ok": true, "global": { "todos": [...], "memo": "" }, "workspace": { "todos": [...], "memo": "" } | null, "counts": { "globalOpen": 2, "workspaceOpen": 1 } }
 ```
 
 `POST /api/dsh-notes` —— 动作，body：
 
 | action | 附加字段 | 行为 |
 | --- | --- | --- |
-| `add` | `scope`, `sessionId?`, `text` | 添加待办（空文本忽略） |
-| `toggle` | `scope`, `sessionId?`, `id`, `done: boolean` | 勾选/取消（幂等） |
-| `edit` | `scope`, `sessionId?`, `id`, `text` | 行内编辑（空文本忽略） |
-| `delete` | `scope`, `sessionId?`, `id` | 删除待办 |
-| `clear-done` | `scope`, `sessionId?` | 移除全部已完成待办 |
-| `set-memo` | `scope`, `sessionId?`, `text` | 整体替换随记文本（空串 = 清空） |
+| `add` | `scope`, `workspaceId?`, `text` | 添加待办（空文本忽略） |
+| `toggle` | `scope`, `workspaceId?`, `id`, `done: boolean` | 勾选/取消（幂等） |
+| `edit` | `scope`, `workspaceId?`, `id`, `text` | 行内编辑（空文本忽略） |
+| `delete` | `scope`, `workspaceId?`, `id` | 删除待办（记入撤销记录） |
+| `clear-done` | `scope`, `workspaceId?` | 移除全部已完成待办（记入撤销记录） |
+| `pin` | `scope`, `workspaceId?`, `id`, `pinned: boolean` | 置顶/取消置顶（置顶移到头部） |
+| `reorder` | `scope`, `workspaceId?`, `orderedIds: string[]` | 拖拽排序：按 id 列表整体重排 |
+| `undo-delete` | `scope`, `workspaceId?` | 撤销上次删除/清空（无记录返回 404 `no-undo`） |
+| `set-memo` | `scope`, `workspaceId?`, `text` | 整体替换随记文本（空串 = 清空） |
 
-- `scope: 'global'` 时 `sessionId` 必须缺省；`scope: 'session'` 时 `sessionId` 必须为非空字符串，否则 `{ok: false, error: 'bad-args'}`。
-- 成功返回 `{ok: true, state: <同 GET 的快照>}`；存储域不可用返回 `{ok: false, error: 'storage-unavailable'}`。
-- 响应只包含 NoteItem 标量拷贝（构造小对象），绝不外泄域内部 live 对象。
+- `scope: 'global'` 时 `workspaceId` 必须缺省；`scope: 'workspace'` 时 `workspaceId` 必须为非空字符串，否则 `{ok: false, error: 'bad-args'}`。
+- 成功返回 `{ok: true, state: <同 GET 的快照>}`；存储域不可用返回 `{ok: false, error: 'storage-unavailable'}`；`undo-delete` 无记录返回 404 `{ok: false, error: 'no-undo'}`。
+- 响应只包含 TodoItem 标量拷贝（构造小对象），绝不外泄域内部 live 对象。
 
 ## 7. 主题适配规范
 
@@ -300,7 +309,7 @@ dsh web                            # 重启生效（bundle 层启动时组合）
 | --- | --- | --- | --- |
 | M0 原型 | `prototype/index.html` 可交互评审 | 明暗切换、宽/窄侧栏、竖栏部分高度 + 折叠/展开、待办/随记双分区、随记自动保存、完整交互、localStorage 模拟持久化 | ✅ 完成 |
 | M1 实现 | src 双 half 落地（§4-§6），`pnpm build` 产出 lib | 构建通过；`dsh plugin --profile web add .` 安装成功并登记 bundle | ✅ 完成 |
-| M2 功能验收 | 全局/会话待办增删改查、随记自动保存、tab 跟随、折叠/展开（状态持久化）、空态/错误态、窄轨侧栏下竖栏位置跟随 | 对照 §2 功能清单逐项 | ⏳ 待重启 DSH 后验收 |
+| M2 功能验收 | 全局/工作区待办增删改查、置顶、拖拽排序、撤销删除、随记自动保存、tab 跟随、折叠/展开（状态持久化）、空态/错误态、窄轨侧栏下竖栏位置跟随 | 对照 §2 功能清单逐项 | ⏳ 待重启 DSH 后验收 |
 | M3 持久化验收 | 刷新/重启后数据仍在 | `~/.dsh/storages/notes.json` 结构符合 §5 | ⏳ 待验收 |
 | M4 主题验收 | 明暗双主题下所有状态对比 | 与原型一致，无硬编码色值残留 | ⏳ 待验收 |
 | M5 隔离验收 | agent 不可见 | 工具目录无 notes 工具；会话日志/提示词中无小记内容；HTTP API 无鉴权面（仅本机 Web） | ⏳ 待验收 |
@@ -316,21 +325,20 @@ dsh web                            # 重启生效（bundle 层启动时组合）
 - 存储文件损坏：域 open 抛 `malformed-medium`，API 返回 `storage-unavailable`，UI 显示错误条，不影响宿主其他功能；schema 演进时 bump 域 version。
 - zod 透传 schema 不做内容校验：数据全部由插件自身写入，风险可控；如未来需要强校验，可引入运行时 zod 构建路径。
 
-### 10.1 后续候选功能（评审结论：本轮未采纳，留档备选）
+### 10.1 后续候选功能（评审结论：部分采纳，余项留档备选）
 
-> 评审日期：2026-08 · 结论：保持当前范围，以下候选不纳入本迭代。将来需要时按此列表评估，实现前各候选需更新为已核实的接口事实。
-
-**A 档（数据可用性/可恢复性）**
+> 评审日期：2026-08 · **已采纳并实现**：撤销删除（§5/§6）、置顶与拖拽排序（§5/§6）；**作用域调整为工作区**（§1/§3.2/§5）。
+> 以下候选未纳入本迭代，将来需要时按此列表评估，实现前各候选需更新为已核实的接口事实。
 
 | 候选 | 痛点 | 实现路径（基于已核实能力） |
 | --- | --- | --- |
-| 跨会话搜索/「全部」视图 | 会话小记只跟随当前会话，旧会话内容无法检索 | Host 增 `GET /api/dsh-notes/search?q=` 遍历 `table.entries()` 匹配；竖栏增搜索 tab；标题用 `sessionQuery.readTitleSnapshot`（只读元数据） |
-| 误删撤销 | 删除/清空立即永久丢失 | 客户端内存级撤销（删除后 5s 出现「撤销」），无需改存储 |
-| 无效会话清理 | 会话删除/归档后记录残留 | 维护接口对比 `sessionPersistence.list()`（只读会话头）清理；会给插件引入 session 服务只读依赖（与隔离不冲突，需确认） |
-
-**B 档（增强）**：消息一键存入小记（`conversation.chat.assistant-actions` 加按钮，聊天→小记方向，不违反隔离）；导出/备份（JSON/Markdown 下载）；置顶/拖拽排序（域 version 2 + 迁移）。
-
-**C 档（工程质量）**：Host API 冒烟测试（node --test）；多窗口实时同步（SSE 推送 `domain/changed`）；竖栏宽度可调。
+| 跨工作区搜索/「全部」视图 | 工作区小记只跟随当前工作区，旧工作区内容无法检索 | Host 增 `GET /api/dsh-notes/search?q=` 遍历 `table.entries()` 匹配；竖栏增搜索 tab；标题用 `workspaceRegistry` 只读查询 |
+| 无效工作区清理 | 工作区删除后记录残留 | 维护接口对比 `workspaceRegistry.list()`（只读元数据）清理；会给插件引入 workspace 服务只读依赖（与隔离不冲突，需确认） |
+| 消息一键存入小记 | 聊天内容需手动复制粘贴 | `conversation.chat.assistant-actions` 加按钮，聊天→小记方向，不违反隔离 |
+| 导出/备份 | 唯一副本是 notes.json | 竖栏导出 JSON/Markdown 下载 |
+| Host API 冒烟测试 | M2/M3 人工验收 | node --test 起临时端口打 API、断言 notes.json |
+| 多窗口实时同步 | 秒级延迟 | SSE 推送 `domain/changed` |
+| 竖栏宽度可调 | 固定 280px | 拖拽竖栏边缘（成本中等） |
 
 **明确不做**：模型侧工具/agent 可见性（违反核心要求）；提醒/通知；随记 Markdown 渲染（违背自由文本定位）；多用户/云同步。
 
