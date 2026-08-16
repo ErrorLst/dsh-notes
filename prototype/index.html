@@ -704,7 +704,8 @@ body.rail .foot-quota .rail-only { display: inline; }
 .np-item:hover .np-grip { opacity: 1; }
 .np-grip:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); }
 .np-grip:active { cursor: grabbing; }
-.np-grip svg { width: 10px; height: 14px; }
+.np-grip svg { width: 10px; height: 14px; pointer-events: none; -webkit-user-drag: none; }
+.np-grip { touch-action: none; }
 
 .np-edit {
   flex: 1;
@@ -1172,7 +1173,6 @@ function renderItem(item) {
   const grip = document.createElement('button')
   grip.className = 'np-grip'
   grip.title = '拖拽排序'
-  grip.draggable = true
   grip.innerHTML = ICON_GRIP
 
   const check = document.createElement('button')
@@ -1425,32 +1425,33 @@ $('npClear').addEventListener('click', () => {
   renderDock()
 })
 
-/* ---- 拖拽排序 ---- */
-$('npList').addEventListener('dragstart', (e) => {
-  const row = e.target.closest('.np-item')
+/* ---- 拖拽排序（Pointer Events，避免浏览器原生选中/幽灵拖拽） ---- */
+$('npList').addEventListener('pointerdown', (e) => {
+  const grip = e.target.closest('.np-grip')
+  if (!grip) return
+  if (e.pointerType === 'mouse' && e.button !== 0) return
+  e.preventDefault()
+  const row = grip.closest('.np-item')
   if (!row) return
   state.dragId = row.dataset.id
-  renderDock()
-})
-$('npList').addEventListener('dragover', (e) => {
-  const row = e.target.closest('.np-item')
-  if (!row || state.dragId === null) return
-  e.preventDefault()
-  if (state.dropId !== row.dataset.id) { state.dropId = row.dataset.id; renderDock() }
-})
-$('npList').addEventListener('dragend', () => {
-  state.dragId = null
   state.dropId = null
+  try { grip.setPointerCapture(e.pointerId) } catch {}
   renderDock()
 })
-$('npList').addEventListener('drop', (e) => {
+$('npList').addEventListener('pointermove', (e) => {
+  if (state.dragId === null) return
+  const hit = document.elementFromPoint(e.clientX, e.clientY)
+  const row = hit && hit.closest ? hit.closest('.np-item') : null
+  const next = row ? (row.dataset.id || null) : null
+  if (state.dropId !== next) { state.dropId = next; renderDock() }
+})
+$('npList').addEventListener('pointerup', (e) => {
   const scope = scopeOf(state.tab)
   const from = state.dragId
-  const target = e.target.closest('.np-item')?.dataset?.id ?? null
+  const target = state.dropId
   state.dragId = null
   state.dropId = null
   if (!scope || from === null || from === target) { renderDock(); return }
-  e.preventDefault()
   const todos = scope.todos
   const display = displayTodos(todos)
   const fromIndex = display.findIndex((it) => it.id === from)
@@ -1467,6 +1468,11 @@ $('npList').addEventListener('drop', (e) => {
     if (shouldPin) { next.splice(movedIndex, 1); next.unshift(moved) }
   }
   scope.todos = next
+  renderDock()
+})
+$('npList').addEventListener('pointercancel', () => {
+  state.dragId = null
+  state.dropId = null
   renderDock()
 })
 

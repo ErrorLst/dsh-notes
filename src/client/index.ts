@@ -203,7 +203,8 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 .np-item:hover .np-grip { opacity: 1; }
 .np-grip:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); }
 .np-grip:active { cursor: grabbing; }
-.np-grip svg { width: 10px; height: 14px; }
+.np-grip svg { width: 10px; height: 14px; pointer-events: none; -webkit-user-drag: none; }
+.np-grip { touch-action: none; }
 
 .np-check {
   flex: none;
@@ -401,6 +402,8 @@ function NotesDock(props) {
   const boundKeyRef = useRef(null) // 已绑定 textarea 的作用域键
   const undoTimerRef = useRef(null)
   const tipRef = useRef(null)
+  const dragIdRef = useRef(null)
+  const dropIdRef = useRef(null)
 
   /* ---------- 自定义悬浮提示（原生 title 在透明渐显按钮上不可靠） ---------- */
   function tipElOf(target) {
@@ -628,22 +631,34 @@ function NotesDock(props) {
     })
   }
 
-  /* ---------- 拖拽排序 ---------- */
-  function onDragStart(event, id) {
+  /* ---------- 拖拽排序（Pointer Events 手动拖拽，避免浏览器原生选中/幽灵拖拽） ---------- */
+  function onGripPointerDown(event, id) {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    event.preventDefault() // 阻止文本选择与浏览器原生拖拽行为
+    dragIdRef.current = id
+    dropIdRef.current = null
     setDragId(id)
-    try { event.dataTransfer.effectAllowed = 'move' } catch { /* ignore */ }
+    setDropId(null)
+    try { event.currentTarget.setPointerCapture(event.pointerId) } catch { /* ignore */ }
   }
-  function onDragOver(event, id) {
-    if (dragId === null || dragId === id) return
-    event.preventDefault()
-    setDropId(id)
+  function onGripPointerMove(event) {
+    if (dragIdRef.current === null) return
+    const hit = document.elementFromPoint(event.clientX, event.clientY)
+    const row = hit && hit.closest ? hit.closest('.np-item') : null
+    const next = row && row.dataset ? row.dataset.id : null
+    if (next !== dropIdRef.current) {
+      dropIdRef.current = next
+      setDropId(next)
+    }
   }
-  function onDrop(event, targetId) {
-    event.preventDefault()
-    const from = dragId
+  function onGripPointerUp(event) {
+    const from = dragIdRef.current
+    const target = dropIdRef.current
+    dragIdRef.current = null
+    dropIdRef.current = null
     setDragId(null)
     setDropId(null)
-    if (from === null || from === targetId) return
+    if (from === null || from === target) return
     const scope = scopeOf(data, tab)
     if (scope === null) return
     const todos = scope.todos
@@ -652,7 +667,7 @@ function NotesDock(props) {
     if (fromIndex < 0) return
     const next = [...display]
     const [moved] = next.splice(fromIndex, 1)
-    const targetIndex = targetId === null ? next.length : next.findIndex((item) => item.id === targetId)
+    const targetIndex = target === null ? next.length : next.findIndex((item) => item.id === target)
     next.splice(targetIndex < 0 ? next.length : targetIndex, 0, moved)
 
     const pinnedCount = todos.filter((item) => item.pinned).length
@@ -662,6 +677,12 @@ function NotesDock(props) {
     if (moved.pinned !== shouldPin) updates.push(post({ action: 'pin', scope: tab, workspaceId: workspaceArg, id: moved.id, pinned: shouldPin }))
     updates.push(post({ action: 'reorder', scope: tab, workspaceId: workspaceArg, orderedIds: next.map((item) => item.id) }))
     void Promise.all(updates)
+  }
+  function onGripPointerCancel() {
+    dragIdRef.current = null
+    dropIdRef.current = null
+    setDragId(null)
+    setDropId(null)
   }
 
   /* ---------- 行内编辑 ---------- */
@@ -769,19 +790,19 @@ function NotesDock(props) {
           'div',
           {
             key: item.id,
+            'data-id': item.id,
             className: rowClass,
             title: '双击编辑',
-            onDragOver: (event) => onDragOver(event, item.id),
-            onDrop: (event) => onDrop(event, item.id),
             onDoubleClick: () => startEdit(item),
           },
           React.createElement('button', {
             type: 'button',
             className: 'np-grip',
             'data-tip': '拖拽排序',
-            draggable: true,
-            onDragStart: (event) => onDragStart(event, item.id),
-            onDragEnd: () => { setDragId(null); setDropId(null) },
+            onPointerDown: (event) => onGripPointerDown(event, item.id),
+            onPointerMove: onGripPointerMove,
+            onPointerUp: onGripPointerUp,
+            onPointerCancel: onGripPointerCancel,
             dangerouslySetInnerHTML: { __html: ICON_GRIP },
           }),
           React.createElement('button', {
