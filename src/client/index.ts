@@ -8,8 +8,8 @@
 //      MutationObserver 跟随侧栏折叠/拖拽（不硬编码任何产品选择器）。
 //   2. 竖栏内容：全局/本工作区 tab + 待办区（添加/勾选/双击编辑/删除/清空/
 //      置顶/拖拽排序/撤销删除）+ 随记区（自由文本，防抖 600ms + 失焦自动保存）。
-//   3. 数据经 fetch('/api/dsh-notes') 读写；当前工作区来自 useWorkspaces
-//      （recentWorkspaceId = 最近活跃工作区）。
+//   3. 数据经 fetch('/api/dsh-notes') 读写；当前工作区解析链：
+//      当前会话 cwd（useSessions）→ 路径匹配工作区 → 兜底 recentWorkspaceId。
 //   4. 样式只使用 --dsw-alias-* 语义令牌（原型 prototype/index.html 为基准）。
 
 const React = require('react')
@@ -43,6 +43,7 @@ const DOCK_CSS = `
   border-right: 1px solid var(--dsw-alias-border-l1);
   z-index: 10;
   font-family: var(--dsw-font-family);
+  font-size: 12px;
   color: var(--dsw-alias-label-primary);
   box-sizing: border-box;
   --dsh-notes-shadow: 0 8px 28px rgba(15, 17, 21, 0.14), 0 2px 8px rgba(15, 17, 21, 0.08);
@@ -71,7 +72,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   background: var(--dsw-alias-bg-overlay);
   border: 1px solid var(--dsw-alias-border-l2);
   box-shadow: var(--dsh-notes-shadow);
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--dsw-alias-label-secondary);
   white-space: nowrap;
   transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
@@ -82,8 +83,8 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 
 .dock-body { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 .dock-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px 8px; }
-.dock-head .np-title { font-size: 13px; font-weight: 600; color: var(--dsw-alias-label-primary); }
-.dock-head .np-title .em { color: var(--dsw-alias-label-tertiary); font-weight: 400; margin-left: 4px; font-size: 11px; }
+.dock-head .np-title { font-size: 12.5px; font-weight: 600; color: var(--dsw-alias-label-primary); }
+.dock-head .np-title .em { color: var(--dsw-alias-label-tertiary); font-weight: 400; margin-left: 4px; font-size: 10.5px; }
 .dock-collapse {
   margin-left: auto;
   width: 22px;
@@ -100,9 +101,9 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 
 .np-tabs { display: flex; gap: 2px; padding: 0 12px 6px; }
 .np-tab {
-  padding: 4px 10px;
+  padding: 3px 10px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--dsw-alias-label-secondary);
   max-width: 180px;
   overflow: hidden;
@@ -119,17 +120,17 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   border-radius: 8px;
   background: var(--dsw-alias-interactive-bg-hover-danger);
   color: var(--dsw-alias-state-error-primary);
-  font-size: 12px;
+  font-size: 11.5px;
 }
 
 .np-section { display: flex; flex-direction: column; min-height: 0; }
 .np-sec-memo { flex: 1; border-top: 1px solid var(--dsw-alias-border-l1); }
 .np-sec-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px 6px; }
-.np-sec-title { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; color: var(--dsw-alias-label-tertiary); }
-.np-sec-count { font-size: 11px; color: var(--dsw-alias-label-tertiary); }
+.np-sec-title { font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; color: var(--dsw-alias-label-tertiary); }
+.np-sec-count { font-size: 10.5px; color: var(--dsw-alias-label-tertiary); }
 .np-clear {
   margin-left: auto;
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--dsw-alias-label-secondary);
   padding: 2px 6px;
   border-radius: 6px;
@@ -142,12 +143,12 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 .np-input {
   flex: 1;
   min-width: 0;
-  padding: 6px 10px;
+  padding: 5px 10px;
   border-radius: 8px;
   border: 1px solid var(--dsw-alias-border-l2);
   background: var(--dsw-specific-input-major);
   color: var(--dsw-alias-label-primary);
-  font-size: 12.5px;
+  font-size: 12px;
   outline: none;
   transition: border-color var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
 }
@@ -155,11 +156,11 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 .np-input:focus { border-color: var(--dsw-alias-brand-primary); }
 .np-add {
   flex: none;
-  padding: 6px 12px;
+  padding: 5px 12px;
   border-radius: 8px;
   background: var(--dsw-alias-button-primary-fill);
   color: var(--dsw-alias-label-primary-foreground);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 500;
   transition: opacity var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
 }
@@ -170,20 +171,19 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 6px;
+  padding: 4px 6px;
   border-radius: 8px;
   transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
 }
 .np-item:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .np-item.dragging { opacity: 0.45; }
 .np-item.drop-target { box-shadow: inset 0 2px 0 var(--dsw-alias-brand-primary); }
-.np-item.pinned .np-text { color: var(--dsw-alias-label-primary); }
-.np-item.pinned .np-text::after { content: ' 📌'; font-size: 10px; }
+.np-item.pinned .np-text::after { content: ' 📌'; font-size: 9px; }
 
 .np-check {
   flex: none;
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   border-radius: 5px;
   border: 1.5px solid var(--dsw-alias-border-l4);
   background: transparent;
@@ -198,8 +198,8 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 .np-text {
   flex: 1;
   min-width: 0;
-  font-size: 12.5px;
-  line-height: 1.5;
+  font-size: 12px;
+  line-height: 1.45;
   color: var(--dsw-alias-label-primary);
   word-break: break-all;
   cursor: text;
@@ -214,7 +214,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   border: 1px solid var(--dsw-alias-brand-primary);
   background: var(--dsw-specific-input-major);
   color: var(--dsw-alias-label-primary);
-  font-size: 12.5px;
+  font-size: 12px;
   outline: none;
 }
 .np-pin {
@@ -248,7 +248,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 .np-item:hover .np-del { opacity: 1; }
 .np-del:hover { background: var(--dsw-alias-interactive-bg-hover-danger); color: var(--dsw-alias-state-error-primary); }
 .np-del svg { width: 12px; height: 12px; }
-.np-empty { padding: 22px 12px; text-align: center; font-size: 12px; color: var(--dsw-alias-label-tertiary); }
+.np-empty { padding: 22px 12px; text-align: center; font-size: 11.5px; color: var(--dsw-alias-label-tertiary); }
 
 .np-undo {
   display: flex;
@@ -260,12 +260,12 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   background: var(--dsw-alias-bg-overlay);
   border: 1px solid var(--dsw-alias-border-l2);
   box-shadow: var(--dsh-notes-shadow);
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--dsw-alias-label-secondary);
 }
 .np-undo button {
   margin-left: auto;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 500;
   color: var(--dsw-alias-brand-primary);
   padding: 2px 6px;
@@ -283,15 +283,15 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   border: 1px solid var(--dsw-alias-border-l2);
   background: var(--dsw-specific-input-major);
   color: var(--dsw-alias-label-primary);
-  font-size: 12.5px;
-  line-height: 1.55;
+  font-size: 12px;
+  line-height: 1.5;
   resize: none;
   outline: none;
   transition: border-color var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
 }
 .np-memo::placeholder { color: var(--dsw-alias-label-tertiary); }
 .np-memo:focus { border-color: var(--dsw-alias-brand-primary); }
-.np-memo-status { font-size: 11px; color: var(--dsw-alias-label-tertiary); margin-left: auto; }
+.np-memo-status { font-size: 10.5px; color: var(--dsw-alias-label-tertiary); margin-left: auto; }
 `
 
 function scopeOf(data, tab) {
@@ -306,10 +306,19 @@ function openCount(todos) {
 
 function NotesDock(props) {
   const useWorkspaces = props.useWorkspaces
-  const workspaceId = useWorkspaces((state) => state.recentWorkspaceId)
-  const workspaceTitle = useWorkspaces((state) =>
+  const useSessions = props.useSessions
+  // 当前工作区解析：会话 cwd → 路径匹配工作区 → 兜底最近活跃工作区
+  const currentCwd = useSessions ? useSessions((state) => (state.current !== undefined ? state.byId[state.current]?.cwd : undefined)) : undefined
+  const recentWorkspaceId = useWorkspaces ? useWorkspaces((state) => state.recentWorkspaceId) : undefined
+  const pathWorkspaceId = useWorkspaces ? useWorkspaces((state) => {
+    if (currentCwd === undefined) return undefined
+    const hit = state.items.find((item) => item.path === currentCwd)
+    return hit !== undefined ? hit.workspaceId : undefined
+  }) : undefined
+  const workspaceId = pathWorkspaceId ?? recentWorkspaceId
+  const workspaceTitle = useWorkspaces ? useWorkspaces((state) =>
     state.items.find((item) => item.workspaceId === workspaceId)?.title,
-  )
+  ) : undefined
 
   const rootRef = useRef(null)
   const inputRef = useRef(null)
