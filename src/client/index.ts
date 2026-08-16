@@ -307,15 +307,26 @@ function openCount(todos) {
 function NotesDock(props) {
   const useWorkspaces = props.useWorkspaces
   const useSessions = props.useSessions
-  // 当前工作区解析：会话 cwd → 路径匹配工作区 → 兜底最近活跃工作区
+  // 当前工作区解析链（按可靠性排序）：
+  //   1) 当前会话 id ∈ workspace.sessionIds（权威归属）
+  //   2) 会话 cwd → 归一化路径匹配 workspace.path
+  //   3) recentWorkspaceId 兜底
+  const currentSessionId = useSessions ? useSessions((state) => state.current) : undefined
   const currentCwd = useSessions ? useSessions((state) => (state.current !== undefined ? state.byId[state.current]?.cwd : undefined)) : undefined
   const recentWorkspaceId = useWorkspaces ? useWorkspaces((state) => state.recentWorkspaceId) : undefined
-  const pathWorkspaceId = useWorkspaces ? useWorkspaces((state) => {
-    if (currentCwd === undefined) return undefined
-    const hit = state.items.find((item) => item.path === currentCwd)
+  const workspaceBySession = useWorkspaces ? useWorkspaces((state) => {
+    if (currentSessionId === undefined) return undefined
+    const hit = state.items.find((item) => item.sessionIds.includes(currentSessionId))
     return hit !== undefined ? hit.workspaceId : undefined
   }) : undefined
-  const workspaceId = pathWorkspaceId ?? recentWorkspaceId
+  const workspaceByCwd = useWorkspaces ? useWorkspaces((state) => {
+    if (currentCwd === undefined) return undefined
+    const normalize = (p) => (p ?? '').toLowerCase().replace(/[\\/]+/g, '\\').replace(/\\+$/, '')
+    const target = normalize(currentCwd)
+    const hit = state.items.find((item) => normalize(item.path) === target)
+    return hit !== undefined ? hit.workspaceId : undefined
+  }) : undefined
+  const workspaceId = workspaceBySession ?? workspaceByCwd ?? recentWorkspaceId
   const workspaceTitle = useWorkspaces ? useWorkspaces((state) =>
     state.items.find((item) => item.workspaceId === workspaceId)?.title,
   ) : undefined
@@ -615,7 +626,7 @@ function NotesDock(props) {
       '全局',
     ),
   ]
-  if (workspaceId !== undefined && data.workspace !== null) {
+  if (workspaceId !== undefined) {
     tabs.push(
       React.createElement(
         'button',
