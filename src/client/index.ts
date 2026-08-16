@@ -182,18 +182,20 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 
 .np-check {
   flex: none;
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   border-radius: 5px;
-  border: 1.5px solid var(--dsw-alias-border-l4);
+  border: 1.5px solid var(--dsw-alias-label-tertiary);
   background: transparent;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
+  transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), border-color var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
 }
+.np-check:hover { border-color: var(--dsw-alias-brand-primary); background: var(--dsw-alias-interactive-bg-hover); }
 .np-check svg { width: 10px; height: 10px; opacity: 0; }
 .np-check.on { background: var(--dsw-alias-brand-primary); border-color: var(--dsw-alias-brand-primary); }
+.np-check.on:hover { background: var(--dsw-alias-brand-primary); }
 .np-check.on svg { opacity: 1; }
 .np-text {
   flex: 1;
@@ -219,20 +221,21 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 }
 .np-pin {
   flex: none;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: 6px;
   color: var(--dsw-alias-label-tertiary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  opacity: 0;
-  transition: opacity var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), color var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
+  opacity: 0.35;
+  cursor: pointer;
+  transition: opacity var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), color var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), transform var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
 }
-.np-item:hover .np-pin, .np-pin.on { opacity: 1; }
-.np-pin:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-brand-primary); }
-.np-pin.on { color: var(--dsw-alias-brand-primary); }
-.np-pin svg { width: 12px; height: 12px; }
+.np-item:hover .np-pin { opacity: 1; }
+.np-pin:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-brand-primary); transform: scale(1.15); }
+.np-pin.on { opacity: 1; color: var(--dsw-alias-brand-primary); }
+.np-pin svg { width: 13px; height: 13px; }
 .np-del {
   flex: none;
   width: 20px;
