@@ -272,7 +272,7 @@ DomainSpec {
 | 错误 | `--dsw-alias-state-error-primary`（存储不可用提示） |
 | 字体/动效 | `--dsw-font-family`、`--ds-ease-in-out`、`--ds-transition-duration-fast` |
 
-**原型即样式基准**：`prototype/index.html` 内嵌了与 design-platform.css 一致的令牌定义（仅原型内嵌，插件本体不复制色板），插件实现时应以原型的组件样式为基准迁移。
+**样式基准**：组件样式的唯一事实来源是 `src/client/index.ts` 的 `DOCK_CSS`（已随实现演进：字号采用紧凑刻度 10.5-12.5px，根字号 12px）；`prototype/index.html` 仅作交互形态参考。
 
 ## 8. 目录结构与构建
 
