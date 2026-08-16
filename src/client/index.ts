@@ -175,6 +175,9 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   gap: 6px;
   padding: 4px 6px;
   border-radius: 8px;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
   transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
 }
 .np-item:hover { background: var(--dsw-alias-interactive-bg-hover); }
@@ -206,7 +209,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   line-height: 1.45;
   color: var(--dsw-alias-label-primary);
   word-break: break-all;
-  cursor: text;
+  cursor: default;
   padding: 1px 0;
 }
 .np-item.done .np-text { color: var(--dsw-alias-label-tertiary); text-decoration: line-through; }
@@ -220,6 +223,8 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   color: var(--dsw-alias-label-primary);
   font-size: 12px;
   outline: none;
+  user-select: text;
+  -webkit-user-select: text;
 }
 .np-pin {
   flex: none;
@@ -278,6 +283,23 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
 }
 .np-undo button:hover { background: var(--dsw-alias-interactive-bg-hover); }
+
+/* 自定义悬浮提示（原生 title 在透明渐显元素上不可靠） */
+.np-tip {
+  position: absolute;
+  z-index: 30;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-overlay);
+  border: 1px solid var(--dsw-alias-border-l2);
+  box-shadow: var(--dsh-notes-shadow);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--dsw-alias-label-primary);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.np-tip[hidden] { display: none; }
 
 .np-memo {
   flex: 1;
@@ -358,6 +380,44 @@ function NotesDock(props) {
   const dataForRef = useRef(null) // 当前 data 所属的工作区 id（null = 无工作区）
   const boundKeyRef = useRef(null) // 已绑定 textarea 的作用域键
   const undoTimerRef = useRef(null)
+  const tipRef = useRef(null)
+
+  /* ---------- 自定义悬浮提示（原生 title 在透明渐显按钮上不可靠） ---------- */
+  function tipElOf(target) {
+    return target && target.closest ? target.closest('[data-tip]') : null
+  }
+  function positionTip(el) {
+    const tip = tipRef.current
+    if (tip === null) return
+    tip.textContent = el.dataset.tip || ''
+    const rect = el.getBoundingClientRect()
+    const dockRect = rootRef.current !== null ? rootRef.current.getBoundingClientRect() : null
+    if (dockRect === null) return
+    let x = rect.left - dockRect.left
+    let y = rect.bottom - dockRect.top + 6
+    const tw = tip.offsetWidth
+    const th = tip.offsetHeight
+    if (x + tw > dockRect.width - 4) x = Math.max(4, dockRect.width - tw - 4)
+    if (y + th > dockRect.height - 4) y = rect.top - dockRect.top - th - 6
+    tip.style.left = `${x}px`
+    tip.style.top = `${y}px`
+    tip.hidden = false
+  }
+  function hideTip() {
+    if (tipRef.current !== null) tipRef.current.hidden = true
+  }
+  function onTipOver(event) {
+    const el = tipElOf(event.target)
+    if (el !== null) positionTip(el)
+    else hideTip()
+  }
+  function onTipMove(event) {
+    const el = tipElOf(event.target)
+    if (el !== null) positionTip(el)
+  }
+  function onTipOut(event) {
+    if (tipElOf(event.relatedTarget) === null) hideTip()
+  }
 
   /* ---------- 竖栏 left 跟随 AppFrame 网格第一列（侧栏列） ---------- */
   useEffect(() => {
@@ -603,14 +663,23 @@ function NotesDock(props) {
   if (collapsed) {
     return React.createElement(
       'div',
-      { className: 'dsh-notes-dock collapsed', 'data-notes-ver': '79b01c8', ref: rootRef, style: { left: `${left}px` } },
+      {
+        className: 'dsh-notes-dock collapsed',
+        'data-notes-ver': '79b01c8',
+        ref: rootRef,
+        style: { left: `${left}px` },
+        onMouseOver: onTipOver,
+        onMouseMove: onTipMove,
+        onMouseOut: onTipOut,
+      },
       React.createElement(
         'button',
-        { className: 'dock-collapsed', type: 'button', title: '展开小记', onClick: expand },
+        { className: 'dock-collapsed', type: 'button', 'data-tip': '展开小记', onClick: expand },
         React.createElement('span', null, '📝'),
         React.createElement('span', null, '小记'),
         React.createElement('span', { dangerouslySetInnerHTML: { __html: ICON_EXPAND } }),
       ),
+      React.createElement('div', { className: 'np-tip', ref: tipRef, hidden: true }),
     )
   }
 
@@ -692,7 +761,7 @@ function NotesDock(props) {
           React.createElement('button', {
             type: 'button',
             className: 'np-check' + (item.done ? ' on' : ''),
-            title: item.done ? '标记未完成' : '标记完成',
+            'data-tip': item.done ? '标记未完成' : '标记完成',
             onClick: () => toggleTodo(item),
             dangerouslySetInnerHTML: { __html: ICON_CHECK },
           }),
@@ -700,14 +769,14 @@ function NotesDock(props) {
           React.createElement('button', {
             type: 'button',
             className: 'np-pin' + (item.pinned ? ' on' : ''),
-            title: item.pinned ? '取消置顶' : '置顶',
+            'data-tip': item.pinned ? '取消置顶' : '置顶',
             onClick: () => pinTodo(item),
             dangerouslySetInnerHTML: { __html: ICON_PIN },
           }),
           React.createElement('button', {
             type: 'button',
             className: 'np-del',
-            title: '删除',
+            'data-tip': '删除',
             onClick: () => deleteTodo(item),
             dangerouslySetInnerHTML: { __html: ICON_TRASH },
           }),
@@ -716,7 +785,15 @@ function NotesDock(props) {
 
   return React.createElement(
     'div',
-    { className: 'dsh-notes-dock', 'data-notes-ver': '79b01c8', ref: rootRef, style: { left: `${left}px` } },
+    {
+      className: 'dsh-notes-dock',
+      'data-notes-ver': '79b01c8',
+      ref: rootRef,
+      style: { left: `${left}px` },
+      onMouseOver: onTipOver,
+      onMouseMove: onTipMove,
+      onMouseOut: onTipOut,
+    },
     React.createElement(
       'div',
       { className: 'dock-body' },
@@ -732,7 +809,7 @@ function NotesDock(props) {
         React.createElement('button', {
           type: 'button',
           className: 'dock-collapse',
-          title: '折叠小记',
+          'data-tip': '折叠小记',
           onClick: collapse,
           dangerouslySetInnerHTML: { __html: ICON_COLLAPSE },
         }),
@@ -755,7 +832,7 @@ function NotesDock(props) {
           ),
           React.createElement(
             'button',
-            { type: 'button', className: 'np-clear', disabled: doneCount === 0, onClick: clearDone },
+            { type: 'button', className: 'np-clear', 'data-tip': '清空已完成', disabled: doneCount === 0, onClick: clearDone },
             '清空已完成',
           ),
         ),
@@ -800,6 +877,7 @@ function NotesDock(props) {
         }),
       ),
     ),
+    React.createElement('div', { className: 'np-tip', ref: tipRef, hidden: true }),
   )
 }
 
