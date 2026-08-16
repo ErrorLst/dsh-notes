@@ -183,13 +183,13 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), transform var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease);
 }
 .np-item:hover { background: var(--dsw-alias-interactive-bg-hover); }
-/* 被拖行：跟随指针浮动（位移由 JS 写入 inline transform）+ 浮起阴影 */
+/* 被拖行：原位提亮（不跟随指针、不遮挡相邻行），位置由插入线指示 */
 .np-item.dragging {
-  opacity: 0.95;
+  opacity: 0.8;
   background: var(--dsw-alias-interactive-bg-hover-solid);
   box-shadow: var(--dsh-notes-shadow);
   z-index: 2;
-  transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), box-shadow var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
+  transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), box-shadow var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), opacity var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
 }
 /* 目标位置：顶部动画插入线 */
 .np-item.drop-target::after {
@@ -669,12 +669,7 @@ function NotesDock(props) {
   }
   function onGripPointerMove(event) {
     if (dragIdRef.current === null) return
-    // 被拖行跟随指针浮动（translate + scale）
-    const start = dragStartRef.current
-    const dragging = document.querySelector('.dsh-notes-dock .np-item.dragging')
-    if (dragging !== null && start !== null) {
-      dragging.style.transform = `translate(${event.clientX - start.x}px, ${event.clientY - start.y}px) scale(1.03)`
-    }
+    // 被拖行不跟随指针（避免遮挡/重叠）；只更新插入位置指示
     const hit = document.elementFromPoint(event.clientX, event.clientY)
     const row = hit && hit.closest ? hit.closest('.np-item') : null
     const next = row && row.dataset ? row.dataset.id : null
@@ -688,17 +683,20 @@ function NotesDock(props) {
     const target = dropIdRef.current
     dragIdRef.current = null
     dropIdRef.current = null
-    dragStartRef.current = null
     setDragId(null)
     setDropId(null)
-    // 记录各行当前视觉位置（含被拖行的浮动位移），用于松手后的 FLIP 归位动画
+    // 未产生实际位移（仅点击手柄）时取消，不触发排序
+    const start = dragStartRef.current
+    dragStartRef.current = null
+    const moved = start !== null && Math.hypot(event.clientX - start.x, event.clientY - start.y) >= 4
+    if (!moved || from === null || from === target) return
+    // 记录各行当前视觉位置，用于松手后的 FLIP 归位动画
     const rects = {}
     for (const row of document.querySelectorAll('.dsh-notes-dock .np-item')) {
       const r = row.getBoundingClientRect()
       if (row.dataset && row.dataset.id) rects[row.dataset.id] = { left: r.left, top: r.top }
     }
     flipFromRef.current = rects
-    if (from === null || from === target) return
     const scope = scopeOf(data, tab)
     if (scope === null) return
     const todos = scope.todos
@@ -706,15 +704,15 @@ function NotesDock(props) {
     const fromIndex = display.findIndex((item) => item.id === from)
     if (fromIndex < 0) return
     const next = [...display]
-    const [moved] = next.splice(fromIndex, 1)
+    const [movedItem] = next.splice(fromIndex, 1)
     const targetIndex = target === null ? next.length : next.findIndex((item) => item.id === target)
-    next.splice(targetIndex < 0 ? next.length : targetIndex, 0, moved)
+    next.splice(targetIndex < 0 ? next.length : targetIndex, 0, movedItem)
 
     const pinnedCount = todos.filter((item) => item.pinned).length
-    const movedIndex = next.indexOf(moved)
+    const movedIndex = next.indexOf(movedItem)
     const shouldPin = movedIndex < pinnedCount
     const updates = []
-    if (moved.pinned !== shouldPin) updates.push(post({ action: 'pin', scope: tab, workspaceId: workspaceArg, id: moved.id, pinned: shouldPin }))
+    if (movedItem.pinned !== shouldPin) updates.push(post({ action: 'pin', scope: tab, workspaceId: workspaceArg, id: movedItem.id, pinned: shouldPin }))
     updates.push(post({ action: 'reorder', scope: tab, workspaceId: workspaceArg, orderedIds: next.map((item) => item.id) }))
     void Promise.all(updates)
   }

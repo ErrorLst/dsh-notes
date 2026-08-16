@@ -688,11 +688,11 @@ body.rail .foot-quota .rail-only { display: inline; }
 .np-item.done .np-text { color: var(--dsw-alias-label-tertiary); text-decoration: line-through; }
 .np-item.pinned .np-text::after { content: ' 📌'; font-size: 10px; }
 .np-item.dragging {
-  opacity: 0.95;
+  opacity: 0.8;
   background: var(--dsw-alias-interactive-bg-hover-solid);
   box-shadow: var(--dsh-notes-shadow);
   z-index: 2;
-  transition: background var(--ds-transition-duration-fast) var(--ds-ease-in-out), box-shadow var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-in-out), box-shadow var(--ds-transition-duration-fast) var(--ds-ease-in-out), opacity var(--ds-transition-duration-fast) var(--ds-ease-in-out);
 }
 .np-item.drop-target::after {
   content: '';
@@ -1467,10 +1467,7 @@ $('npList').addEventListener('pointerdown', (e) => {
 })
 $('npList').addEventListener('pointermove', (e) => {
   if (state.dragId === null) return
-  const dragging = document.querySelector('.np-item.dragging')
-  if (dragging && dragStartPoint) {
-    dragging.style.transform = `translate(${e.clientX - dragStartPoint.x}px, ${e.clientY - dragStartPoint.y}px) scale(1.03)`
-  }
+  // 被拖行不跟随指针（避免遮挡/重叠）；只更新插入位置指示
   const hit = document.elementFromPoint(e.clientX, e.clientY)
   const row = hit && hit.closest ? hit.closest('.np-item') : null
   const next = row ? (row.dataset.id || null) : null
@@ -1482,29 +1479,32 @@ $('npList').addEventListener('pointerup', (e) => {
   const target = state.dropId
   state.dragId = null
   state.dropId = null
+  // 未产生实际位移（仅点击手柄）时取消
+  const start = dragStartPoint
   dragStartPoint = null
-  // 记录各行当前视觉位置（含浮动位移），用于 FLIP 归位动画
+  const moved = start !== null && Math.hypot(e.clientX - start.x, e.clientY - start.y) >= 4
+  if (!moved || !scope || from === null || from === target) { renderDock(); return }
+  // 记录各行当前视觉位置，用于 FLIP 归位动画
   const rects = {}
   for (const row of document.querySelectorAll('.np-item')) {
     if (!row.dataset || !row.dataset.id) continue
     const r = row.getBoundingClientRect()
     rects[row.dataset.id] = { left: r.left, top: r.top }
   }
-  if (!scope || from === null || from === target) { renderDock(); return }
   const todos = scope.todos
   const display = displayTodos(todos)
   const fromIndex = display.findIndex((it) => it.id === from)
   if (fromIndex < 0) { renderDock(); return }
   const next = [...display]
-  const [moved] = next.splice(fromIndex, 1)
+  const [movedItem] = next.splice(fromIndex, 1)
   const targetIndex = target === null ? next.length : next.findIndex((it) => it.id === target)
-  next.splice(targetIndex < 0 ? next.length : targetIndex, 0, moved)
+  next.splice(targetIndex < 0 ? next.length : targetIndex, 0, movedItem)
   const pinnedCount = todos.filter((it) => it.pinned).length
-  const movedIndex = next.indexOf(moved)
+  const movedIndex = next.indexOf(movedItem)
   const shouldPin = movedIndex < pinnedCount
-  if (moved.pinned !== shouldPin) {
-    moved.pinned = shouldPin
-    if (shouldPin) { next.splice(movedIndex, 1); next.unshift(moved) }
+  if (movedItem.pinned !== shouldPin) {
+    movedItem.pinned = shouldPin
+    if (shouldPin) { next.splice(movedIndex, 1); next.unshift(movedItem) }
   }
   scope.todos = next
   renderDock()
