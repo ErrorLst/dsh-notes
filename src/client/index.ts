@@ -58,9 +58,11 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   border-right: none;
 }
 .dsh-notes-dock.collapsed .dock-body { display: none; }
-.dsh-notes-dock button { font-family: inherit; font-size: inherit; border: none; background: none; color: inherit; cursor: pointer; }
-.dsh-notes-dock input { font-family: inherit; font-size: inherit; color: inherit; }
-.dsh-notes-dock textarea { font-family: inherit; font-size: inherit; color: inherit; }
+/* 复位规则用 :where() 保证零特异性，绝不覆盖任何组件类样式
+   （旧版 .dsh-notes-dock button 的 border/background/color 曾压制 .np-* 规则） */
+:where(.dsh-notes-dock) button { font-family: inherit; font-size: inherit; border: none; background: none; color: inherit; cursor: pointer; }
+:where(.dsh-notes-dock) input { font-family: inherit; font-size: inherit; color: inherit; }
+:where(.dsh-notes-dock) textarea { font-family: inherit; font-size: inherit; color: inherit; }
 
 .dock-collapsed {
   display: none;
