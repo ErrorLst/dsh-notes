@@ -29,6 +29,8 @@ const ICON_COLLAPSE =
   '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4.5L6 8.5l4-4"/></svg>'
 const ICON_EXPAND =
   '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7.5L6 3.5l4 4"/></svg>'
+const ICON_GRIP =
+  '<svg viewBox="0 0 10 16" fill="currentColor"><circle cx="2.5" cy="2.5" r="1.4"/><circle cx="7.5" cy="2.5" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13.5" r="1.4"/><circle cx="7.5" cy="13.5" r="1.4"/></svg>'
 
 const DOCK_CSS = `
 .dsh-notes-dock {
@@ -177,13 +179,31 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   border-radius: 8px;
   user-select: none;
   -webkit-user-select: none;
-  -webkit-user-drag: none;
   transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
 }
 .np-item:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .np-item.dragging { opacity: 0.45; }
 .np-item.drop-target { box-shadow: inset 0 2px 0 var(--dsw-alias-brand-primary); }
 .np-item.pinned .np-text::after { content: ' 📌'; font-size: 9px; }
+
+/* 拖拽手柄：行最左侧，唯一拖拽入口（整行不可拖） */
+.np-grip {
+  flex: none;
+  width: 16px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--dsw-alias-label-tertiary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.4;
+  cursor: grab;
+  transition: opacity var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), color var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
+}
+.np-item:hover .np-grip { opacity: 1; }
+.np-grip:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); }
+.np-grip:active { cursor: grabbing; }
+.np-grip svg { width: 10px; height: 14px; }
 
 .np-check {
   flex: none;
@@ -235,13 +255,13 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  opacity: 0.35;
+  opacity: 0; /* 悬停待办行时显示 */
   cursor: pointer;
   transition: opacity var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), color var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), transform var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
 }
 .np-item:hover .np-pin { opacity: 1; }
 .np-pin:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-brand-primary); transform: scale(1.15); }
-.np-pin.on { opacity: 1; color: var(--dsw-alias-brand-primary); }
+.np-pin.on { color: var(--dsw-alias-brand-primary); }
 .np-pin svg { width: 13px; height: 13px; }
 .np-del {
   flex: none;
@@ -750,14 +770,20 @@ function NotesDock(props) {
           {
             key: item.id,
             className: rowClass,
-            draggable: true,
-            title: '拖拽排序，双击编辑',
-            onDragStart: (event) => onDragStart(event, item.id),
+            title: '双击编辑',
             onDragOver: (event) => onDragOver(event, item.id),
             onDrop: (event) => onDrop(event, item.id),
-            onDragEnd: () => { setDragId(null); setDropId(null) },
             onDoubleClick: () => startEdit(item),
           },
+          React.createElement('button', {
+            type: 'button',
+            className: 'np-grip',
+            'data-tip': '拖拽排序',
+            draggable: true,
+            onDragStart: (event) => onDragStart(event, item.id),
+            onDragEnd: () => { setDragId(null); setDropId(null) },
+            dangerouslySetInnerHTML: { __html: ICON_GRIP },
+          }),
           React.createElement('button', {
             type: 'button',
             className: 'np-check' + (item.done ? ' on' : ''),
