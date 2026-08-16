@@ -13,7 +13,7 @@
 //   4. 样式只使用 --dsw-alias-* 语义令牌（原型 prototype/index.html 为基准）。
 
 const React = require('react')
-const { useState, useEffect, useRef, useCallback } = React
+const { useState, useEffect, useLayoutEffect, useRef, useCallback } = React
 
 const STYLE_TAG_ID = 'dsh-notes-dock-style'
 const COLLAPSED_KEY = 'dsh-notes.collapsed'
@@ -177,13 +177,36 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   gap: 6px;
   padding: 4px 6px;
   border-radius: 8px;
+  position: relative;
   user-select: none;
   -webkit-user-select: none;
-  transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
+  transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), transform var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease);
 }
 .np-item:hover { background: var(--dsw-alias-interactive-bg-hover); }
-.np-item.dragging { opacity: 0.45; }
-.np-item.drop-target { box-shadow: inset 0 2px 0 var(--dsw-alias-brand-primary); }
+/* 被拖行：跟随指针浮动（位移由 JS 写入 inline transform）+ 浮起阴影 */
+.np-item.dragging {
+  opacity: 0.95;
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+  box-shadow: var(--dsh-notes-shadow);
+  z-index: 2;
+  transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), box-shadow var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
+}
+/* 目标位置：顶部动画插入线 */
+.np-item.drop-target::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: -2px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--dsw-alias-brand-primary);
+  animation: dsh-notes-drop-pulse 0.4s ease-in-out infinite alternate;
+}
+@keyframes dsh-notes-drop-pulse {
+  from { opacity: 0.35; transform: scaleX(0.55); }
+  to { opacity: 1; transform: scaleX(1); }
+}
 .np-item.pinned .np-text::after { content: ' 📌'; font-size: 9px; }
 
 /* 拖拽手柄：行最左侧，唯一拖拽入口（整行不可拖） */
@@ -198,13 +221,13 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   justify-content: center;
   opacity: 0.4;
   cursor: grab;
-  transition: opacity var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), color var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
+  touch-action: none;
+  transition: opacity var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), color var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), transform var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
 }
 .np-item:hover .np-grip { opacity: 1; }
 .np-grip:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); }
-.np-grip:active { cursor: grabbing; }
+.np-grip:active { cursor: grabbing; transform: scale(0.85); }
 .np-grip svg { width: 10px; height: 14px; pointer-events: none; -webkit-user-drag: none; }
-.np-grip { touch-action: none; }
 
 .np-check {
   flex: none;
@@ -404,6 +427,8 @@ function NotesDock(props) {
   const tipRef = useRef(null)
   const dragIdRef = useRef(null)
   const dropIdRef = useRef(null)
+  const dragStartRef = useRef(null) // { x, y } 指针按下位置
+  const flipFromRef = useRef(null) // 拖拽松手时各行的视觉位置（FLIP 归位动画）
 
   /* ---------- 自定义悬浮提示（原生 title 在透明渐显按钮上不可靠） ---------- */
   function tipElOf(target) {
@@ -637,12 +662,19 @@ function NotesDock(props) {
     event.preventDefault() // 阻止文本选择与浏览器原生拖拽行为
     dragIdRef.current = id
     dropIdRef.current = null
+    dragStartRef.current = { x: event.clientX, y: event.clientY }
     setDragId(id)
     setDropId(null)
     try { event.currentTarget.setPointerCapture(event.pointerId) } catch { /* ignore */ }
   }
   function onGripPointerMove(event) {
     if (dragIdRef.current === null) return
+    // 被拖行跟随指针浮动（translate + scale）
+    const start = dragStartRef.current
+    const dragging = document.querySelector('.dsh-notes-dock .np-item.dragging')
+    if (dragging !== null && start !== null) {
+      dragging.style.transform = `translate(${event.clientX - start.x}px, ${event.clientY - start.y}px) scale(1.03)`
+    }
     const hit = document.elementFromPoint(event.clientX, event.clientY)
     const row = hit && hit.closest ? hit.closest('.np-item') : null
     const next = row && row.dataset ? row.dataset.id : null
@@ -656,8 +688,16 @@ function NotesDock(props) {
     const target = dropIdRef.current
     dragIdRef.current = null
     dropIdRef.current = null
+    dragStartRef.current = null
     setDragId(null)
     setDropId(null)
+    // 记录各行当前视觉位置（含被拖行的浮动位移），用于松手后的 FLIP 归位动画
+    const rects = {}
+    for (const row of document.querySelectorAll('.dsh-notes-dock .np-item')) {
+      const r = row.getBoundingClientRect()
+      if (row.dataset && row.dataset.id) rects[row.dataset.id] = { left: r.left, top: r.top }
+    }
+    flipFromRef.current = rects
     if (from === null || from === target) return
     const scope = scopeOf(data, tab)
     if (scope === null) return
@@ -681,9 +721,32 @@ function NotesDock(props) {
   function onGripPointerCancel() {
     dragIdRef.current = null
     dropIdRef.current = null
+    dragStartRef.current = null
     setDragId(null)
     setDropId(null)
   }
+
+  /* ---------- FLIP 归位动画：reorder 落盘后，行从拖拽时的视觉位置平滑移动到新位置 ---------- */
+  useLayoutEffect(() => {
+    const prev = flipFromRef.current
+    flipFromRef.current = null
+    if (prev === null || Object.keys(prev).length === 0) return
+    for (const row of document.querySelectorAll('.dsh-notes-dock .np-item')) {
+      const id = row.dataset ? row.dataset.id : undefined
+      if (id === undefined) continue
+      const before = prev[id]
+      if (before === undefined) continue
+      const r = row.getBoundingClientRect()
+      const dx = before.left - r.left
+      const dy = before.top - r.top
+      if (dx === 0 && dy === 0) continue
+      row.style.transition = 'none'
+      row.style.transform = `translate(${dx}px, ${dy}px)`
+      void row.getBoundingClientRect() // 强制回流后再取消过渡位移
+      row.style.transition = ''
+      row.style.transform = ''
+    }
+  }, [data])
 
   /* ---------- 行内编辑 ---------- */
   function startEdit(item) {

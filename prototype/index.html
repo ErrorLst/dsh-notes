@@ -650,7 +650,10 @@ body.rail .foot-quota .rail-only { display: inline; }
   gap: 8px;
   padding: 5px 6px;
   border-radius: 8px;
-  transition: background var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+  position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-in-out), transform var(--ds-transition-duration) var(--ds-ease-in-out);
 }
 .np-item:hover { background: var(--dsw-alias-interactive-bg-hover); }
 
@@ -684,8 +687,28 @@ body.rail .foot-quota .rail-only { display: inline; }
 }
 .np-item.done .np-text { color: var(--dsw-alias-label-tertiary); text-decoration: line-through; }
 .np-item.pinned .np-text::after { content: ' 📌'; font-size: 10px; }
-.np-item.dragging { opacity: 0.45; }
-.np-item.drop-target { box-shadow: inset 0 2px 0 var(--dsw-alias-brand-primary); }
+.np-item.dragging {
+  opacity: 0.95;
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+  box-shadow: var(--dsh-notes-shadow);
+  z-index: 2;
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-in-out), box-shadow var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+}
+.np-item.drop-target::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: -2px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--dsw-alias-brand-primary);
+  animation: dsh-notes-drop-pulse 0.4s ease-in-out infinite alternate;
+}
+@keyframes dsh-notes-drop-pulse {
+  from { opacity: 0.35; transform: scaleX(0.55); }
+  to { opacity: 1; transform: scaleX(1); }
+}
 
 /* 拖拽手柄：行最左侧，唯一拖拽入口 */
 .np-grip {
@@ -703,9 +726,10 @@ body.rail .foot-quota .rail-only { display: inline; }
 }
 .np-item:hover .np-grip { opacity: 1; }
 .np-grip:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); }
-.np-grip:active { cursor: grabbing; }
+.np-grip:active { cursor: grabbing; transform: scale(0.85); }
 .np-grip svg { width: 10px; height: 14px; pointer-events: none; -webkit-user-drag: none; }
 .np-grip { touch-action: none; }
+.np-grip { transition: opacity var(--ds-transition-duration-fast) var(--ds-ease-in-out), background var(--ds-transition-duration-fast) var(--ds-ease-in-out), color var(--ds-transition-duration-fast) var(--ds-ease-in-out), transform var(--ds-transition-duration-fast) var(--ds-ease-in-out); }
 
 .np-edit {
   flex: 1;
@@ -1426,6 +1450,8 @@ $('npClear').addEventListener('click', () => {
 })
 
 /* ---- 拖拽排序（Pointer Events，避免浏览器原生选中/幽灵拖拽） ---- */
+let dragStartPoint = null
+
 $('npList').addEventListener('pointerdown', (e) => {
   const grip = e.target.closest('.np-grip')
   if (!grip) return
@@ -1435,11 +1461,16 @@ $('npList').addEventListener('pointerdown', (e) => {
   if (!row) return
   state.dragId = row.dataset.id
   state.dropId = null
+  dragStartPoint = { x: e.clientX, y: e.clientY }
   try { grip.setPointerCapture(e.pointerId) } catch {}
   renderDock()
 })
 $('npList').addEventListener('pointermove', (e) => {
   if (state.dragId === null) return
+  const dragging = document.querySelector('.np-item.dragging')
+  if (dragging && dragStartPoint) {
+    dragging.style.transform = `translate(${e.clientX - dragStartPoint.x}px, ${e.clientY - dragStartPoint.y}px) scale(1.03)`
+  }
   const hit = document.elementFromPoint(e.clientX, e.clientY)
   const row = hit && hit.closest ? hit.closest('.np-item') : null
   const next = row ? (row.dataset.id || null) : null
@@ -1451,6 +1482,14 @@ $('npList').addEventListener('pointerup', (e) => {
   const target = state.dropId
   state.dragId = null
   state.dropId = null
+  dragStartPoint = null
+  // 记录各行当前视觉位置（含浮动位移），用于 FLIP 归位动画
+  const rects = {}
+  for (const row of document.querySelectorAll('.np-item')) {
+    if (!row.dataset || !row.dataset.id) continue
+    const r = row.getBoundingClientRect()
+    rects[row.dataset.id] = { left: r.left, top: r.top }
+  }
   if (!scope || from === null || from === target) { renderDock(); return }
   const todos = scope.todos
   const display = displayTodos(todos)
@@ -1469,10 +1508,26 @@ $('npList').addEventListener('pointerup', (e) => {
   }
   scope.todos = next
   renderDock()
+  // FLIP 归位：新位置已渲染，从记录的旧视觉位置平滑过渡
+  for (const row of document.querySelectorAll('.np-item')) {
+    const id = row.dataset && row.dataset.id
+    const before = id ? rects[id] : undefined
+    if (!before) continue
+    const r = row.getBoundingClientRect()
+    const dx = before.left - r.left
+    const dy = before.top - r.top
+    if (dx === 0 && dy === 0) continue
+    row.style.transition = 'none'
+    row.style.transform = `translate(${dx}px, ${dy}px)`
+    void row.getBoundingClientRect()
+    row.style.transition = ''
+    row.style.transform = ''
+  }
 })
 $('npList').addEventListener('pointercancel', () => {
   state.dragId = null
   state.dropId = null
+  dragStartPoint = null
   renderDock()
 })
 
