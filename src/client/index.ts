@@ -601,7 +601,7 @@ function NotesDock(props) {
   if (collapsed) {
     return React.createElement(
       'div',
-      { className: 'dsh-notes-dock collapsed', ref: rootRef, style: { left: `${left}px` } },
+      { className: 'dsh-notes-dock collapsed', 'data-notes-ver': '79b01c8', ref: rootRef, style: { left: `${left}px` } },
       React.createElement(
         'button',
         { className: 'dock-collapsed', type: 'button', title: '展开小记', onClick: expand },
@@ -714,7 +714,7 @@ function NotesDock(props) {
 
   return React.createElement(
     'div',
-    { className: 'dsh-notes-dock', ref: rootRef, style: { left: `${left}px` } },
+    { className: 'dsh-notes-dock', 'data-notes-ver': '79b01c8', ref: rootRef, style: { left: `${left}px` } },
     React.createElement(
       'div',
       { className: 'dock-body' },
