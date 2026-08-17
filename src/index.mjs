@@ -758,13 +758,13 @@ function setupScard(ctx) {
     return textOfBlocks(block.content)
   }
 
-  function flushPartials(partials, messages) {
+  function flushPartials(partials, messages, onRow) {
     const done = []
     for (const p of partials.values()) {
-      if (p.kind === 'text' && p.text !== '') messages.push({ kind: 'assistant', id: p.id, text: p.text })
-      else if (p.kind === 'reasoning' && p.text !== '') messages.push({ kind: 'reasoning', id: p.id, text: p.text })
+      if (p.kind === 'text' && p.text !== '') onRow({ kind: 'assistant', id: p.id, text: p.text }, p.stepKey)
+      else if (p.kind === 'reasoning' && p.text !== '') onRow({ kind: 'reasoning', id: p.id, text: p.text }, p.stepKey)
       else if (p.kind === 'tool-call' && (p.name !== '' || p.args !== '')) {
-        messages.push({ kind: 'tool', id: p.id, ...(p.callId === '' ? {} : { callId: p.callId }), name: p.name, args: p.args, result: null, isError: false, done: false })
+        onRow({ kind: 'tool', id: p.id, callId: p.callId ?? '', name: p.name, args: p.args, result: null, isError: false, done: false }, p.stepKey)
       }
       done.push(p.id)
     }
@@ -774,8 +774,60 @@ function setupScard(ctx) {
 
   function foldTranscript(session) {
     const messages = []
-    const toolById = new Map() // callId -> 消息数组下标（流式工具卡也可能入 partials，不动此表）
-    const partials = new Map() // 流式块索引 -> { id, kind, text, name, args }
+    const toolById = new Map() // callId -> 行对象（流式块与 tool/call 事件共用，按 callId 去重）
+    const partialRowsByStep = new Map() // stepKey -> Set<rowId>：流式收尾行；最终 assistant/message 落地时移除（同一输出只显示一次）
+    const partials = new Map() // 流式块索引 -> { id, kind, text, name, args, callId, stepKey }
+
+    const stepKeyOf = (data) => {
+      const turn = data?.turn
+      const step = data?.step
+      return typeof turn === 'number' && typeof step === 'number' ? `${turn}:${step}` : null
+    }
+
+    const markPartialRow = (stepKey, rowId) => {
+      if (stepKey === null) return
+      let set = partialRowsByStep.get(stepKey)
+      if (set === undefined) { set = new Set(); partialRowsByStep.set(stepKey, set) }
+      set.add(rowId)
+    }
+
+    const removePartialRowsOf = (stepKey) => {
+      const set = partialRowsByStep.get(stepKey)
+      if (set === undefined || set.size === 0) return
+      partialRowsByStep.delete(stepKey)
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (set.has(messages[i].id)) messages.splice(i, 1)
+      }
+    }
+
+    const upsertToolRow = (callId, fields) => {
+      if (typeof callId === 'string' && callId !== '') {
+        const existing = toolById.get(callId)
+        if (existing !== undefined && messages.includes(existing) && existing.kind === 'tool') {
+          if (typeof fields.name === 'string' && fields.name !== '') existing.name = fields.name
+          if (typeof fields.args === 'string' && fields.args !== '') existing.args = fields.args
+          return existing
+        }
+        const row = { kind: 'tool', id: `t${callId}`, callId, name: fields.name ?? '', args: fields.args ?? '', result: null, isError: false, done: false }
+        toolById.set(callId, row)
+        messages.push(row)
+        return row
+      }
+      const row = { kind: 'tool', id: fields.id ?? `tp${messages.length}`, name: fields.name ?? '', args: fields.args ?? '', result: null, isError: false, done: false }
+      messages.push(row)
+      return row
+    }
+
+    // 统一落行：工具行走 callId 去重；文本/思考行记录 stepKey 供最终消息替换
+    const pushRow = (row, stepKey) => {
+      if (row.kind === 'tool') {
+        upsertToolRow(row.callId, { id: row.id, name: row.name, args: row.args })
+        return
+      }
+      messages.push(row)
+      markPartialRow(stepKey, row.id)
+    }
+
     let running = false
     let lastSeq = 0
     for (const ev of session.events ?? []) {
@@ -810,6 +862,8 @@ function setupScard(ctx) {
         case 'assistant/message': {
           const content = Array.isArray(ev.data?.message?.content) ? ev.data.message.content : null
           if (content === null) break
+          // 该 step 的流式收尾行已被最终消息取代：先移除再推最终行（避免同内容重复）
+          removePartialRowsOf(stepKeyOf(ev.data))
           for (const block of content) {
             if (block === null || typeof block !== 'object') continue
             if (block.type === 'text' && typeof block.text === 'string' && block.text !== '') {
@@ -828,18 +882,18 @@ function setupScard(ctx) {
             const kind = chunk.blockType === 'text' || chunk.blockType === 'reasoning' || chunk.blockType === 'tool-call'
               ? chunk.blockType
               : 'text'
-            partials.set(chunk.index, { id: `p${seq}`, kind, text: '', name: '', args: '' })
+            partials.set(chunk.index, { id: `p${seq}`, kind, text: '', name: '', args: '', callId: '', stepKey: stepKeyOf(ev.data) })
           } else if (chunk.type === 'text-delta') {
             let p = partials.get(chunk.index)
-            if (p === undefined) { p = { id: `p${seq}`, kind: 'text', text: '', name: '', args: '' }; partials.set(chunk.index, p) }
+            if (p === undefined) { p = { id: `p${seq}`, kind: 'text', text: '', name: '', args: '', callId: '', stepKey: stepKeyOf(ev.data) }; partials.set(chunk.index, p) }
             if (p.kind === 'text') p.text += chunk.text ?? ''
           } else if (chunk.type === 'reasoning-delta') {
             let p = partials.get(chunk.index)
-            if (p === undefined) { p = { id: `p${seq}`, kind: 'reasoning', text: '', name: '', args: '' }; partials.set(chunk.index, p) }
+            if (p === undefined) { p = { id: `p${seq}`, kind: 'reasoning', text: '', name: '', args: '', callId: '', stepKey: stepKeyOf(ev.data) }; partials.set(chunk.index, p) }
             if (p.kind === 'reasoning') p.text += chunk.text ?? ''
           } else if (chunk.type === 'tool-call-delta') {
             let p = partials.get(chunk.index)
-            if (p === undefined) { p = { id: `p${seq}`, kind: 'tool-call', text: '', name: '', args: '', callId: '' }; partials.set(chunk.index, p) }
+            if (p === undefined) { p = { id: `p${seq}`, kind: 'tool-call', text: '', name: '', args: '', callId: '', stepKey: stepKeyOf(ev.data) }; partials.set(chunk.index, p) }
             if (p.kind === 'tool-call') {
               if (chunk.id !== undefined && typeof chunk.id === 'string' && chunk.id !== '') p.callId = chunk.id
               if (chunk.name !== undefined && typeof chunk.name === 'string' && chunk.name !== '') p.name = chunk.name
@@ -849,10 +903,10 @@ function setupScard(ctx) {
             const p = partials.get(chunk.index)
             if (p !== undefined) {
               partials.delete(chunk.index)
-              if (p.kind === 'text' && p.text !== '') messages.push({ kind: 'assistant', id: p.id, text: p.text })
-              else if (p.kind === 'reasoning' && p.text !== '') messages.push({ kind: 'reasoning', id: p.id, text: p.text })
+              if (p.kind === 'text' && p.text !== '') pushRow({ kind: 'assistant', id: p.id, text: p.text }, p.stepKey)
+              else if (p.kind === 'reasoning' && p.text !== '') pushRow({ kind: 'reasoning', id: p.id, text: p.text }, p.stepKey)
               else if (p.kind === 'tool-call' && (p.name !== '' || p.args !== '')) {
-                messages.push({ kind: 'tool', id: p.id, ...(p.callId === '' ? {} : { callId: p.callId }), name: p.name, args: p.args, result: null, isError: false, done: false })
+                pushRow({ kind: 'tool', id: p.id, callId: p.callId ?? '', name: p.name, args: p.args, result: null, isError: false, done: false }, p.stepKey)
               }
             }
           }
@@ -861,18 +915,10 @@ function setupScard(ctx) {
         case 'tool/call': {
           const callId = typeof ev.data?.callId === 'string' ? ev.data.callId : null
           if (callId === null || callId === '') break
-          const row = {
-            kind: 'tool',
-            id: `t${callId}`,
-            callId,
+          upsertToolRow(callId, {
             name: typeof ev.data.name === 'string' ? ev.data.name : '',
             args: typeof ev.data.arguments === 'string' ? ev.data.arguments : '',
-            result: null,
-            isError: false,
-            done: false,
-          }
-          toolById.set(callId, messages.length)
-          messages.push(row)
+          })
           break
         }
         case 'tool/result': {
@@ -881,11 +927,10 @@ function setupScard(ctx) {
           const callId = block !== null && block.type === 'tool-result' && typeof block.toolCallId === 'string'
             ? block.toolCallId
             : (recordOf(data.message?.source) !== null && typeof data.message.source.callId === 'string' ? data.message.source.callId : null)
-          const index = callId !== null ? toolById.get(callId) : undefined
-          const row = index !== undefined ? messages[index] : undefined
+          const row = callId !== null ? toolById.get(callId) : undefined
           const resultText = resultTextOf(data)
           const isError = (block !== null && block.isError === true) || data.error !== undefined
-          if (row !== undefined && row.kind === 'tool') {
+          if (row !== undefined && messages.includes(row) && row.kind === 'tool') {
             row.result = resultText
             row.isError = isError
             row.done = true
@@ -908,7 +953,7 @@ function setupScard(ctx) {
               }
             }
           }
-          flushPartials(partials, messages)
+          flushPartials(partials, messages, pushRow)
           break
         }
         case 'turn/start':

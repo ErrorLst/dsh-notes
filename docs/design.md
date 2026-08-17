@@ -3,6 +3,7 @@
 > 版本：0.4 · 状态：**已实现（M1 融合完成 + transcript 分级折叠，待重启 DSH 后验收）** · 关联原型：`prototype/index.html`
 >
 > 变更记录：
+> 0.4.13 —— **修复回复内容重复显示**：同一输出被推了两次——流式块收尾（`block-end`/冲刷）先落一行，随后 `assistant/message` 最终事件又落一行。修复：按 `turn:step` 记录流式收尾行，`assistant/message` 落地时先移除同 step 的流式行再推最终行（与官方会话「partial 被最终消息替换」一致）；工具行改按 `callId` 去重（流式块与 `tool/call` 事件共用一行）。
 > 0.4.12 —— **修复清空会话后旧内容回灌**：`ensureResident()` 单飞缓存未失效——清空后创建的新会话 B 不被轮询使用，`scard-chat-state` 仍解析到旧会话 A 的 transcript（UI 先清空、轮询又把旧消息灌回）。修复：`scard-clear` / `scard-select-cwd` 重建分支置 `residentPromise = null`，下次轮询重新读状态文件解析新会话。清空效果与归档一致（旧会话归档隐藏，卡片落到新空白会话）。
 > 0.4.11 —— 分隔条改为**明显的分割细线**（全宽 1px `border-l2`，9px 热区本身即拖拽把手）；拖拽样式对齐 **DSH 原生**（无悬浮胶囊/底色/手柄，仅 `row-resize`/`col-resize` 指针变化；右缘宽度拖拽同改）。
 > 0.4.10 —— **常驻会话工作目录可配置**：⚙ 弹窗新增「工作目录（cwd）」输入；未配置或路径无效（非绝对路径/不存在/非目录）→ 自动回退系统临时目录 `{tmpdir}/dsh-notes-resident`；cwd 在会话创建时写入 header（工具与 `{{cwd}}` 都读 header.cwd），空白会话立即重建生效、已开始会话在清空后生效；`scard-select-cwd` 动作 + 状态文件 `cwd` 字段。
