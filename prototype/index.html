@@ -281,6 +281,8 @@ body {
   color: var(--dsw-alias-label-primary);
   font-size: 13px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 button {
   font-family: inherit;
@@ -293,9 +295,52 @@ button {
 input, select, textarea { font-family: inherit; font-size: inherit; color: inherit; }
 
 /* ==========================================================================
+   顶部栏（模拟 DSH 上边栏：竖栏从此下方开始，不覆盖）
+   ========================================================================== */
+.topbar {
+  flex: none;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  background: var(--dsw-alias-bg-base);
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  position: relative;
+  z-index: 1500;
+}
+.topbar .tb-brand { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.topbar .tb-brand b { font-size: 13px; font-weight: 700; letter-spacing: 0.02em; }
+.topbar .tb-brand span { font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; color: var(--dsw-alias-label-tertiary); }
+.topbar .tb-search {
+  flex: 1;
+  max-width: 420px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-specific-input-major);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.topbar .spacer { flex: 1; }
+.topbar .tb-btn {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+}
+.topbar .tb-btn:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+
+/* ==========================================================================
    Shell 布局（模拟 DSH：侧栏 + 主区 + 合成器）
    ========================================================================== */
-#app { display: flex; height: 100%; }
+#app { display: flex; flex: 1; min-height: 0; }
 
 /* ---- 侧栏 ---- */
 #sidebar {
@@ -518,14 +563,15 @@ body.rail .foot-quota .rail-only { display: inline; }
 .btn-send svg { width: 14px; height: 14px; }
 
 /* ==========================================================================
-   小记竖栏（v0.4：全高，侧栏与对话区之间；上会话卡片 / 分隔条 / 下小计）
+   小记竖栏（v0.4：上边栏之下的全高，侧栏与对话区之间；
+   上会话卡片 / 分隔条 / 下小计）
    与真实实现一致：shell.overlay 常驻条目 + position:fixed 浮层，
-   不参与布局；left 由 JS 跟随侧栏实测宽度
+   不参与布局；left/top 由 JS 跟随侧栏宽度与顶部栏高度
    ========================================================================== */
 .notes-dock {
   position: fixed;
   left: var(--dsh-notes-dock-left, 260px);
-  top: 0;
+  top: var(--dsh-notes-dock-top, 48px);
   bottom: 0;
   width: 280px;
   display: flex;
@@ -787,31 +833,39 @@ body.rail .foot-quota .rail-only { display: inline; }
 .sc-popup-foot button:hover { opacity: 0.9; }
 
 /* ==========================================================================
-   分隔条（拖拽调整上下比例）
+   分隔条（明显分割标记：整条底色 + 抓握手柄，拖拽调整上下比例）
    ========================================================================== */
 .dock-splitter {
   flex: none;
-  height: 7px;
-  margin: -2px 0;
+  height: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: row-resize;
   z-index: 5;
   touch-action: none;
+  background: var(--dsw-alias-bg-overlay);
+  border-top: 1px solid var(--dsw-alias-border-l2);
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-in-out);
 }
-.dock-splitter::after {
+/* 抓握手柄（居中短条） */
+.dock-splitter::before {
   content: '';
-  width: 32px;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--dsw-alias-border-l2);
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--dsw-alias-border-l3);
   transition: background var(--ds-transition-duration-fast) var(--ds-ease-in-out), width var(--ds-transition-duration-fast) var(--ds-ease-in-out);
 }
-.dock-splitter:hover::after { background: var(--dsw-alias-state-business-primary); width: 44px; }
-.notes-dock.split-dragging .dock-splitter::after {
+.dock-splitter:hover,
+.notes-dock.split-dragging .dock-splitter {
+  background: var(--dsw-alias-interactive-bg-hover-accent);
+}
+.dock-splitter:hover::before,
+.notes-dock.split-dragging .dock-splitter::before {
   background: var(--dsw-alias-state-business-primary);
-  width: 60px;
+  width: 56px;
 }
 .notes-dock.split-dragging { user-select: none; -webkit-user-select: none; cursor: row-resize; }
 
@@ -823,7 +877,6 @@ body.rail .foot-quota .rail-only { display: inline; }
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--dsw-alias-border-l1);
 }
 
 .np-tabs {
@@ -1184,6 +1237,15 @@ body.rail .foot-quota .rail-only { display: inline; }
 </head>
 <body>
 
+<!-- ====================== 顶部栏（模拟 DSH 上边栏） ====================== -->
+<header class="topbar" id="topbar">
+  <span class="tb-brand"><b>deepseek</b><span>HARNESS</span></span>
+  <span class="tb-search">🔍 搜索…</span>
+  <span class="spacer"></span>
+  <button class="tb-btn" title="GitHub">GitHub</button>
+  <button class="tb-btn" title="文档">文档</button>
+</header>
+
 <!-- ====================== Shell 模拟 ====================== -->
 <div id="app">
   <aside id="sidebar">
@@ -1234,8 +1296,9 @@ body.rail .foot-quota .rail-only { display: inline; }
   </main>
 </div>
 
-<!-- ====================== 小记竖栏（v0.4 融合：全高） ======================
+<!-- ====================== 小记竖栏（v0.4 融合） ======================
      fixed 浮层（shell.overlay 模拟），不参与布局；
+     从顶部栏之下到页面底部（不覆盖上边栏）；
      上 = 常驻会话卡片，分隔条，下 = 小计（tab + 待办 + 随记） -->
 <section class="notes-dock" id="notesDock">
   <button class="dock-collapsed" id="dockExpand" title="展开小记">
@@ -1348,8 +1411,8 @@ body.rail .foot-quota .rail-only { display: inline; }
 <div class="proto-hint" id="protoHint">
   <button class="x" id="hintClose">✕</button>
   <b>dsh-notes 融合原型（v0.4）</b><br/>
-  · 竖栏<b>全高</b>占据侧栏与对话区之间：<b>上 = 常驻会话卡片，下 = 小计</b><br/>
-  · 分隔条拖拽调整上下比例（双击复位 46%），折叠/比例均持久化<br/>
+  · 竖栏占据<b>上边栏之下</b>的整列高度（不覆盖顶部栏）：<b>上 = 常驻会话卡片，下 = 小计</b><br/>
+  · 中间分隔条（带底色与手柄）拖拽调整上下比例（双击复位 46%），折叠/比例均持久化<br/>
   · 上半卡片：直接对话（发送/停止/流式）、⚙ 预设/模型/思考等级、清空会话（归档+新建）、↗ 在中间栏打开<br/>
   · 下半小计：全局/工作区 tab、待办（勾选/编辑/置顶/拖拽/撤销/清空）、随记自动保存<br/>
   · 数据存 localStorage（模拟持久化）；右上「会话：空白/已开始」切换演示预设锁定
@@ -2192,19 +2255,23 @@ $('btnReset').addEventListener('click', () => {
 $('hintClose').addEventListener('click', () => { $('protoHint').hidden = true })
 $('btnSettings').addEventListener('click', () => { $('protoHint').hidden = false })
 
-/* ---- 竖栏 left 跟随侧栏实测宽度（与真实 shell.overlay 实现一致） ---- */
-function syncDockLeft() {
+/* ---- 竖栏定位：left 跟随侧栏实测宽度，top 跟随顶部栏高度
+       （与真实 shell.overlay 实现一致；不覆盖上边栏） ---- */
+function syncDockPos() {
   const sidebar = document.getElementById('sidebar')
+  const topbar = document.getElementById('topbar')
   const dock = document.getElementById('notesDock')
   dock.style.left = (sidebar ? sidebar.offsetWidth : 260) + 'px'
+  dock.style.top = (topbar ? topbar.offsetHeight : 48) + 'px'
 }
 if (typeof ResizeObserver !== 'undefined') {
-  new ResizeObserver(syncDockLeft).observe(document.getElementById('sidebar'))
+  new ResizeObserver(syncDockPos).observe(document.getElementById('sidebar'))
+  new ResizeObserver(syncDockPos).observe(document.getElementById('topbar'))
 }
-window.addEventListener('resize', syncDockLeft)
+window.addEventListener('resize', syncDockPos)
 
 /* ---- 启动 ---- */
-syncDockLeft()
+syncDockPos()
 renderAll()
 </script>
 </body>

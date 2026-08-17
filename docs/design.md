@@ -3,12 +3,13 @@
 > 版本：0.4 · 状态：**设计阶段（M0 融合原型待评审）** · 关联原型：`prototype/index.html`
 >
 > 变更记录：
+> 0.4.1 —— 评审修正：竖栏为**「上边栏之下」的全高**（从 DSH 顶部栏下缘到页面底部，不覆盖上边栏）；上下两部分之间的**分隔条明显化**（整条底色 + 抓握手柄）。
 > 0.4 —— **融合 dsh-session-card**：dock 改为**全高**，上半部分为**常驻会话卡片**、下半部分为小计（上下可拖拽调比例）；会话卡片 RPC 并入 `/api/dsh-notes` HTTP 通道；scard-1 动态插件源码不在本会话（inspect 为空），Host 侧按旧 dsh-session-card `design.md`/`research.md` 契约重新实现；常驻会话状态文件沿用 `~/.dsh/session-card.json`，已建会话无缝延续。
 > 0.3 —— 作用域由「会话」改为「工作区」（评审确认）；新增撤销删除、置顶、拖拽排序（§2/§5/§6）。
 
 ## 1. 概述
 
-dsh-notes 在 DSH Web 界面中提供**侧栏与对话区之间的常驻竖栏**（无独立入口按钮、无弹窗）。v0.4 起竖栏**占据全高**（侧栏右缘整列），自上而下分两个功能区：
+dsh-notes 在 DSH Web 界面中提供**侧栏与对话区之间的常驻竖栏**（无独立入口按钮、无弹窗）。v0.4 起竖栏**占据上边栏之下的整列高度**（从 DSH 顶部栏下缘到页面底部，**不覆盖上边栏**），自上而下分两个功能区：
 
 1. **上半部分 —— 常驻会话卡片**（融合自 dsh-session-card）：卡片内直接对话的**插件专属常驻会话**（未分组、无 cwd，独立于任何工作区），头部可设预设 / 模型 / 思考等级，支持清空会话（归档 + 新建）。
 2. **下半部分 —— 小计**（原有功能）：**全局小记**（不分工作区）与**工作区小记**（以工作区隔离，跟随当前工作区）；每作用域含**待办区**（分点待办）与**随记区**（自由多行文本）。
@@ -25,8 +26,8 @@ dsh-notes 在 DSH Web 界面中提供**侧栏与对话区之间的常驻竖栏**
 
 | 能力 | 说明 |
 | --- | --- |
-| 常驻竖栏（全高） | 固定于**左侧边栏与中间对话区之间**：宽 280、**全高**（`top: 0; bottom: 0`）、无独立入口按钮、无弹窗；无会话 hero 视图时仍显示（小计仅全局 tab） |
-| 上下分区 | 分隔条可拖拽调整比例（默认 上 ~46% / 下 ~54%，范围 30%–70%），比例存 `localStorage['dsh-notes.split']` |
+| 常驻竖栏（顶栏之下全高） | 固定于**左侧边栏与中间对话区之间**：宽 280、**从顶部栏下缘到页面底部**（`top: <顶栏高>; bottom: 0`，不覆盖 DSH 上边栏）、无独立入口按钮、无弹窗；无会话 hero 视图时仍显示（小计仅全局 tab） |
+| 上下分区（明显分割） | **分隔条为整条底色条（`bg-overlay` + 上下边框 l2）+ 居中抓握手柄**，拖拽调整比例（默认 上 ~46% / 下 ~54%，范围 25%–75%，双击复位），hover/拖拽时手柄高亮为品牌色；比例存 `localStorage['dsh-notes.split']` |
 | 折叠/展开 | 竖栏头部右侧「▾」按钮折叠；折叠后在同位置显示「📝 小记」胶囊按钮（点击展开）；折叠状态持久化；折叠/展开前先落盘随记 |
 | 定位机制 | 与 v0.3 一致：`shell.overlay` 常驻条目 + `position: absolute` 浮层（定位上下文 = overlay 层，`inset: 0` 覆盖整个 AppFrame），不参与布局；`left` = AppFrame 网格第一列（侧栏列）实测宽度（向上找 grid 帧解析 `gridTemplateColumns`，MutationObserver 跟随折叠/拖拽）；`top: 0; bottom: 0`、`pointer-events: auto` |
 | —— 会话卡片（上半） —— | |
@@ -72,7 +73,8 @@ dsh-notes 在 DSH Web 界面中提供**侧栏与对话区之间的常驻竖栏**
 
 - 竖栏是 `shell.overlay` 的一个**常驻条目**（id `notes-dock`，v0.4 起同时承载会话卡片，不再需要第二个 id；旧 `session-card` 条目由动态插件持有，融合后废弃）。
 - overlay 层点击穿透（`.pI_x6G_overlayLayer`：`position:absolute; inset:0`，z-index 20），竖栏根元素需 `pointer-events: auto`。
-- 定位：`position: absolute; top: 0; bottom: 0; width: 280px`，定位上下文即 overlay 层；`left` 取自 AppFrame `grid-template-columns` 第一列（帧元素通过 `dockEl.parentElement…` 向上找 display:grid 节点），MutationObserver（`attributeFilter: ['style']`）+ `window.resize` 跟随侧栏折叠/拖拽。
+- 定位：`position: absolute; top: <顶部栏高度>; bottom: 0; width: 280px`，定位上下文即 overlay 层；`left` 取自 AppFrame `grid-template-columns` 第一列（帧元素通过 `dockEl.parentElement…` 向上找 display:grid 节点），MutationObserver（`attributeFilter: ['style']`）+ `window.resize` 跟随侧栏折叠/拖拽。
+- **顶部栏之下（v0.4.1）**：overlay 层 `inset: 0` 覆盖整个 AppFrame（含顶部栏区域），竖栏不能从 `top: 0` 开始；`top` 取**顶部栏下缘**——从 overlay 挂载容器向上定位 AppFrame 网格帧，测量其第一行（顶部栏）的高度（具体测量点在实现阶段按真实 DOM 结构核实，与 left 的 MutationObserver 同步机制共用）。原型以 `syncDockPos()` 模拟（测量 `#topbar.offsetHeight`）。
 - 折叠态：仅渲染胶囊按钮（「📝 小记」+ 展开箭头），点击展开；折叠状态存 `localStorage['dsh-notes.collapsed']`。
 - 注册范式：
 
@@ -316,7 +318,7 @@ dsh-notes/
 | 里程碑 | 内容 | 验收 | 状态 |
 | --- | --- | --- | --- |
 | M0 原型（v0.3） | 小计竖栏原型 | 已完成 | ✅ |
-| M0 融合原型（v0.4） | `prototype/index.html`：全高 dock + 上会话卡片（对话/流式/⚙/清空）+ 下小计 + 分隔条拖拽 + 折叠 | 明暗切换、宽/窄侧栏、上下比例可拖、卡片完整交互、小计完整交互、localStorage 模拟持久化 | ⏳ 待评审 |
+| M0 融合原型（v0.4） | `prototype/index.html`：顶栏之下全高 dock + 上会话卡片（对话/流式/⚙/清空）+ 明显分隔条（底色+手柄，可拖拽）+ 下小计 + 折叠 | 明暗切换、宽/窄侧栏、顶栏之下全高（不覆盖上边栏）、上下比例可拖（双击复位）、卡片完整交互、小计完整交互、localStorage 模拟持久化 | ⏳ 待评审 |
 | M1 实现（v0.3） | 小计 src 双 half | 构建通过、安装成功 | ✅ |
 | M1 融合实现（v0.4） | 会话卡片 Host（scard-* 动作 + 常驻会话 + 模型覆盖 + transcript 折叠）与 Client（上半卡片 UI）并入 src；旧 scard-1 动态插件退役 | 构建通过；`scard-state` 触发常驻会话创建/复用（复用 `~/.dsh/session-card.json` 中已有 id）；安装后重启 DSH 生效 | ⏳ |
 | M2 功能验收（v0.3） | 小计功能 | 对照 §2 清单逐项 | ⏳ 待重启 DSH 后验收 |
@@ -328,7 +330,7 @@ dsh-notes/
 ## 10. 已知限制与风险
 
 - 动态重启恢复：dsh-notes 是安装型插件，宿主重启后由组合自动恢复；小计数据在 `notes.json`、常驻会话由 `session-card.json` + DSH 原生持久化共同恢复。
-- **全高遮挡（v0.4 新取舍）**：全高竖栏覆盖对话列左缘整列；对话内容居中（max-width 860）时通常落在留白区，窄窗口下可能盖住对话区左侧内容 —— 用户明确要求全高；折叠后遮挡归零。
+- **顶栏之下全高遮挡（v0.4 新取舍）**：竖栏从顶部栏下缘覆盖对话列左缘至底部；对话内容居中（max-width 860）时通常落在留白区，窄窗口下可能盖住对话区左侧内容 —— 用户明确要求顶栏之下全高；**不覆盖 DSH 上边栏**（顶部栏始终可见、可交互）；折叠后遮挡归零。
 - **常驻会话在侧边栏可见**：以「未分组」条目出现在侧边栏（与「卡片独立于工作区」不冲突）。
 - **常驻会话的模型所有权**：卡片对常驻会话的模型选择拥有最终决定权（注册更早、瀑布在外层）；composer 里再改会被卡片覆盖；其余会话不受影响。
 - **scard-1 动态插件退役**：融合实现上线（DSH 重启）后，若旧动态插件仍在运行会出现双卡片；融合版交付时旧插件随进程重启自然消失，无需手动清理（若用户希望立即移除可在重启前手动 stop）。
