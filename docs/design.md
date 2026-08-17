@@ -3,7 +3,7 @@
 > 版本：0.4 · 状态：**已实现（M1 融合完成 + transcript 分级折叠，待重启 DSH 后验收）** · 关联原型：`prototype/index.html`
 >
 > 变更记录：
-> 0.4.3 —— transcript 分级折叠（对齐 DSH 会话视图）：`user/message` 按 `source` 区分人类输入与**注入上下文**（工作区指令/目录/快照/通知/跨会话召回，按 dsh-client-runtime `contextProvenance` 规则投影标题与生产者）；`assistant/message` 的 reasoning 块与 `tool/call`+`tool/result` 成卡；客户端渲染为**可折叠披露行**（思考/上下文注入/工具调用），流式 partial 按块类型实时展开（提交 `6f825a0`，客户端版本标记 `data-notes-ver="6f825a0"`）。
+> 0.4.3 —— transcript 分级折叠（对齐 DSH 会话视图）：`user/message` 按 `source` 区分人类输入与**注入上下文**（工作区指令/目录/快照/通知/跨会话召回，按 dsh-client-runtime `contextProvenance` 规则投影标题与生产者）；`assistant/message` 的 reasoning 块与 `tool/call`+`tool/result` 成卡；客户端渲染为**可折叠披露行**（思考/上下文注入/工具调用），流式 partial 按块类型实时展开（提交 `7330770`，客户端版本标记 `data-notes-ver="7330770"`）。
 > 0.4.2 —— 融合实现落地（src 双 half）：Host 增 scard-* 动作 + 常驻会话管理 + agent/request 模型覆盖 + transcript 折叠；Client 改全高双分区（上卡片/分隔条/下小计），顶栏之下定位（提交 `9ce1cfb`，客户端版本标记 `data-notes-ver="2bc8a83"`）。
 > 0.4.1 —— 评审修正：竖栏为**「上边栏之下」的全高**（从 DSH 顶部栏下缘到页面底部，不覆盖上边栏）；上下两部分之间的**分隔条明显化**（整条底色 + 抓握手柄）。
 > 0.4 —— **融合 dsh-session-card**：dock 改为**全高**，上半部分为**常驻会话卡片**、下半部分为小计（上下可拖拽调比例）；会话卡片 RPC 并入 `/api/dsh-notes` HTTP 通道；scard-1 动态插件源码不在本会话（inspect 为空），Host 侧按旧 dsh-session-card `design.md`/`research.md` 契约重新实现；常驻会话状态文件沿用 `~/.dsh/session-card.json`，已建会话无缝延续。
