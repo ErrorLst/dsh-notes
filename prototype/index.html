@@ -1320,7 +1320,6 @@ body.rail .foot-quota .rail-only { display: inline; }
         <span class="t">常驻会话</span>
         <span class="sid" id="scSid">sesscard-…</span>
         <span class="spacer"></span>
-        <button class="sc-btn" id="scOpen" title="在中间栏打开">↗</button>
         <button class="sc-btn" id="scSettings" title="设置">⚙</button>
         <button class="sc-btn" id="dockCollapse" title="折叠小记">—</button>
       </div>
@@ -1424,7 +1423,7 @@ body.rail .foot-quota .rail-only { display: inline; }
   <b>dsh-notes 融合原型（v0.4）</b><br/>
   · 竖栏占据<b>上边栏之下</b>的整列高度（不覆盖顶部栏）：<b>上 = 常驻会话卡片，下 = 小计</b>（标题同款样式）<br/>
   · 中间分隔条（带底色与手柄）拖拽调整上下比例（双击复位 46%），折叠/比例均持久化<br/>
-  · 上半卡片：直接对话（发送/停止/流式）、⚙ 预设/模型/思考等级、清空会话（归档+新建）、↗ 在中间栏打开<br/>
+  · 上半卡片：直接对话（发送/停止/流式）、⚙ 预设/模型/思考等级、清空会话（归档+新建）<br/>
   · 下半小计：全局/工作区 tab、待办（勾选/编辑/置顶/拖拽/撤销/清空）、随记自动保存<br/>
   · 数据存 localStorage（模拟持久化）；右上「会话：空白/已开始」切换演示预设锁定
 </div>
@@ -1896,10 +1895,6 @@ $('scSettings').addEventListener('click', () => {
 })
 $('scPopupClose').addEventListener('click', () => { $('scPopup').style.display = 'none' })
 $('scPopupDone').addEventListener('click', () => { $('scPopup').style.display = 'none' })
-
-$('scOpen').addEventListener('click', () => {
-  toastMsg('在中间栏打开常驻会话（真实实现：sessions.open）')
-})
 
 /* 头部控制：预设 / 模型 / 思考等级 */
 $('scPreset').addEventListener('change', () => {

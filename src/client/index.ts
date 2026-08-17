@@ -10,7 +10,7 @@
 //   2. 竖栏内容（自上而下）：
 //      - 上半：常驻会话卡片 —— 消息列表/输入发送/停止/流式 partial（轮询
 //        scard-chat-state 800ms/3s）、⚙ 设置弹窗（预设/模型/思考等级）、
-//        清空会话（归档+新建）、↗ 在中间栏打开（sessions.open）；
+//        清空会话（归档+新建）；
 //        发送/停止走 sessions.binding(id).session.prompt/cancel（wire RPC）。
 //      - 分隔条：拖拽调整上下比例（25%–75%，双击复位 46%），localStorage 持久化。
 //      - 下半：小计 —— 全局/本工作区 tab + 待办区（添加/勾选/双击编辑/删除/
@@ -44,8 +44,6 @@ const ICON_EXPAND =
   '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7.5L6 3.5l4 4"/></svg>'
 const ICON_GRIP =
   '<svg viewBox="0 0 10 16" fill="currentColor"><circle cx="2.5" cy="2.5" r="1.4"/><circle cx="7.5" cy="2.5" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13.5" r="1.4"/><circle cx="7.5" cy="13.5" r="1.4"/></svg>'
-const ICON_OPEN =
-  '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 2.5h5v5M9.5 2.5L2.5 9.5"/></svg>'
 const ICON_GEAR =
   '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="1.8"/><path d="M6 1.2v1.6M6 9.2v1.6M1.2 6h1.6M9.2 6h1.6M2.7 2.7l1.1 1.1M8.2 8.2l1.1 1.1M2.7 9.3l1.1-1.1M8.2 3.8l1.1-1.1"/></svg>'
 
@@ -1253,13 +1251,6 @@ function NotesDock(props) {
     })
   }
 
-  function openInCenter() {
-    if (card === null) return
-    try {
-      if (sessions !== undefined && sessions !== null && typeof sessions.open === 'function') sessions.open(card.sessionId)
-    } catch { /* ignore */ }
-  }
-
   /* ---------- 分隔条拖拽（调整上下比例） ---------- */
   function onSplitPointerDown(event) {
     if (event.pointerType === 'mouse' && event.button !== 0) return
@@ -1296,7 +1287,7 @@ function NotesDock(props) {
       'div',
       {
         className: 'dsh-notes-dock collapsed',
-        'data-notes-ver': '24dd1f2',
+        'data-notes-ver': '80ba745',
         ref: rootRef,
         // 折叠态贴底：显式 top auto，覆盖测量出的顶部偏移
         style: { left: `${left}px`, top: 'auto' },
@@ -1529,13 +1520,6 @@ function NotesDock(props) {
           React.createElement('span', { className: 't' }, '常驻会话'),
           React.createElement('span', { className: 'sid' }, card !== null ? card.sessionId : '…'),
           React.createElement('span', { className: 'spacer' }),
-          React.createElement('button', {
-            type: 'button',
-            className: 'sc-btn',
-            'data-tip': '在中间栏打开',
-            onClick: openInCenter,
-            dangerouslySetInnerHTML: { __html: ICON_OPEN },
-          }),
           React.createElement('button', {
             type: 'button',
             className: 'sc-btn',

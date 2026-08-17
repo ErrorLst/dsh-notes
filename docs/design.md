@@ -39,7 +39,6 @@ dsh-notes 在 DSH Web 界面中提供**侧栏与对话区之间的常驻竖栏**
 | 选择预设 | ⚙ 弹窗内 · `agentPresets` 名册；空白会话可切换（`presets.recompose` + `agent-preset/selected` 事件），已开始则锁定并提示 |
 | 选择模型 / 思考等级 | ⚙ 弹窗内 · `llm` 模型目录（provider 分组）+ 当前模型 `reasoning.efforts`（含「默认」）；经 `agent/request` 全局瀑布监听（untagged、按会话 id 过滤）覆盖 provider/model/reasoningEffort |
 | 清空会话 | 两段式确认；`workspaceRegistry.archiveSession` 归档 + 新建空白常驻会话（运行中拒绝）；客户端不自动导航 |
-| 打开会话 | 在中间栏打开常驻会话查看完整对话/轨迹 |
 | —— 小计（下半，原有） —— | |
 | Tab | 「全局」/「本工作区（工作区标题）」；无当前工作区（`recentWorkspaceId === undefined`）时隐藏工作区 tab；切换时各自独立读写 |
 | 待办区 | 分区标题行（标题 + 「共 X 项 · 未完成 Y」+「清空已完成」）+ 添加输入行 + 分点列表：勾选/取消（显式传 done，幂等）、双击行内编辑（Enter 保存 / Esc 取消 / 失焦保存，空文本忽略）、删除（行悬停出现）、置顶（📌，置顶项恒在顶部）、拖拽排序（Pointer Events，拖到置顶区自动置顶）、撤销删除（5 秒内「撤销」条，恢复原位置） |
