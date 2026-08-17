@@ -1140,6 +1140,7 @@ function setupScard(ctx) {
     revisions.delete(id)
     const newId = await createResident()
     residentIdRef.current = newId
+    residentPromise = null // 关键：失效单飞缓存，下次 ensureResident() 重新读状态文件解析新会话
     return { ok: true, sessionId: newId }
   }
 
@@ -1173,6 +1174,7 @@ function setupScard(ctx) {
     revisions.delete(id)
     const newId = await createResident()
     residentIdRef.current = newId
+    residentPromise = null // 失效单飞缓存（同 scard-clear）
     return {
       ok: true,
       applied: true,
