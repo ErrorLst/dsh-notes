@@ -837,6 +837,22 @@ button.ds-leading { cursor: pointer; }
 .ds-dot[data-state=error] { color: var(--dsw-alias-state-error-primary); }
 .ds-dot[data-state=warning] { color: var(--dsw-alias-state-warn-primary); }
 
+/* 回合错误行（官方 TurnErrorItem） */
+.ds-turn-error {
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 13px;
+  line-height: 20px;
+  display: grid;
+}
+.ds-turn-error-dot { margin-top: 5px; }
+.ds-turn-error-copy { overflow-wrap: anywhere; min-width: 0; }
+.ds-turn-error-title { color: var(--dsw-alias-state-error-primary); margin-right: 6px; font-weight: 600; }
+.ds-turn-error-message { color: var(--dsw-alias-label-secondary); }
+.ds-turn-error-code { color: var(--dsw-alias-label-tertiary); font: var(--dsw-font-markdown-code-block-small); }
+
 @media (prefers-reduced-motion: reduce) {
   .ds-reason[data-state=running] .ds-head::after,
   .ds-tool[data-state=running] .ds-head::after { animation: none; }
@@ -1631,6 +1647,7 @@ const DEFAULT_DATA = {
       { kind: 'context', label: '目录', producer: 'dsh-skill', source: { kind: 'plugin', plugin: 'dsh-skill', form: 'catalog', entries: [{ name: 'skill-a', description: '示例技能 A' }, { name: 'skill-b', description: '示例技能 B' }] }, text: '' },
       { kind: 'assistant', text: '常驻会话独立于任何工作区，清空后会归档并自动新建空白会话。' },
       { kind: 'tool', name: 'bash', callId: 'call_02', args: '{"command":"ls -la"}', result: 'ls: cannot access: 演示错误', isError: true, done: true },
+      { kind: 'turn-error', text: '该模型当前访问量过大，请您稍后再试', code: 'RATE_LIMITED' },
     ],
   },
 }
@@ -2020,6 +2037,13 @@ function renderCardMessages() {
                 + '</div>'
               : '')
           + '</div>' : '')
+        + '</div>'
+      hasContent = true
+    } else if (m.kind === 'turn-error') {
+      html += '<div class="ds-turn-error" role="status">'
+        + '<span class="ds-dot ds-turn-error-dot" data-state="error"></span>'
+        + '<div class="ds-turn-error-copy"><span class="ds-turn-error-title">本轮运行失败</span><span class="ds-turn-error-message">' + esc(m.text || '') + '</span></div>'
+        + (m.code ? '<code class="ds-turn-error-code">' + esc(m.code) + '</code>' : '')
         + '</div>'
       hasContent = true
     }

@@ -342,6 +342,22 @@ button.ds-leading { cursor: pointer; }
 .ds-dot[data-state=error] { color: var(--dsw-alias-state-error-primary); }
 .ds-dot[data-state=warning] { color: var(--dsw-alias-state-warn-primary); }
 
+/* 回合错误行（官方 TurnErrorItem：红点 + 标题/信息 + 错误码） */
+.ds-turn-error {
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 13px;
+  line-height: 20px;
+  display: grid;
+}
+.ds-turn-error-dot { margin-top: 5px; }
+.ds-turn-error-copy { overflow-wrap: anywhere; min-width: 0; }
+.ds-turn-error-title { color: var(--dsw-alias-state-error-primary); margin-right: 6px; font-weight: 600; }
+.ds-turn-error-message { color: var(--dsw-alias-label-secondary); }
+.ds-turn-error-code { color: var(--dsw-alias-label-tertiary); font: var(--dsw-font-markdown-code-block-small); }
+
 @media (prefers-reduced-motion: reduce) {
   .ds-reason[data-state=running] .ds-head::after,
   .ds-tool[data-state=running] .ds-head::after { animation: none; }
@@ -1998,6 +2014,20 @@ function NotesDock(props) {
     if (row.kind === 'reasoning') return React.createElement(ScReasoning, { key, row, streaming: streaming === true })
     if (row.kind === 'context') return React.createElement(ScContext, { key, row })
     if (row.kind === 'tool') return React.createElement(ScTool, { key, row, streaming: streaming === true })
+    if (row.kind === 'turn-error') {
+      return React.createElement(
+        'div',
+        { key, className: 'ds-turn-error', role: 'status' },
+        React.createElement('span', { className: 'ds-dot ds-turn-error-dot', 'data-state': 'error' }),
+        React.createElement('div', { className: 'ds-turn-error-copy' },
+          React.createElement('span', { className: 'ds-turn-error-title' }, '本轮运行失败'),
+          React.createElement('span', { className: 'ds-turn-error-message' }, row.text ?? ''),
+        ),
+        row.code !== undefined && row.code !== ''
+          ? React.createElement('code', { className: 'ds-turn-error-code' }, row.code)
+          : null,
+      )
+    }
     return null
   }
   const chatRows = []

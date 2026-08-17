@@ -822,7 +822,18 @@ function setupScard(ctx) {
         }
         case 'step/end':
         case 'turn/end': {
-          if (ev.type === 'turn/end') running = false
+          if (ev.type === 'turn/end') {
+            running = false
+            // 终局失败：回合错误行（与官方 TurnErrorItem 一致；模型 429 等可见）
+            const reason = recordOf(ev.data?.reason)
+            if (reason !== null && reason.kind === 'error' && recordOf(reason.error) !== null) {
+              const message = stringOf(reason.error.message)
+              if (message !== null) {
+                const code = stringOf(reason.error.code)
+                messages.push({ kind: 'turn-error', id: `te${seq}`, text: message, ...(code === null ? {} : { code }) })
+              }
+            }
+          }
           flushPartials(partials, messages)
           break
         }

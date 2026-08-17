@@ -3,6 +3,7 @@
 > 版本：0.4 · 状态：**已实现（M1 融合完成 + transcript 分级折叠，待重启 DSH 后验收）** · 关联原型：`prototype/index.html`
 >
 > 变更记录：
+> 0.4.7 —— 回合错误可见化（官方 TurnErrorItem）：`turn/end` 携带 `reason.kind === 'error'` 时折叠为 **turn-error 行**（红点 + 「本轮运行失败」 + 错误信息 + 错误码），模型 429 等失败不再被吞掉。
 > 0.4.6 —— 披露行/拖拽把手**对齐官方实现**：思考（ReasoningRow）、上下文注入（ContextInjectionRow+ContextBody）、工具调用（ToolRow+IN/OUT 卡）改为与 DSH 会话视图逐条对应的结构/样式/文案（DisclosureRow 骨架：16px 图标槽 + 悬停换箭头 + 24px 行高 + 14px/24px 排版；Think 首行/末行摘要 + 运行扫描动画；上下文代码块正文 max-height 141px；工具变体图标 + 状态点 + 摘要）；分隔条与右缘宽度条改官方 AppFrame handle 悬浮胶囊样式（button-floating-fill/hover）。Host 上下文行透传原始 `source`、工具行增 `callId`。
 > 0.4.5 —— 分隔条**平时简洁、悬停/拖拽时强调**：静置为透明底 + 短浅手柄（低透明），hover/拖拽切换为底色条（bg-overlay + l2 边框）+ 品牌色长手柄。
 > 0.4.4 —— 竖栏**宽度可调**（§10.1 候选落地）：右边缘水平拖拽（220–480px，默认 280，localStorage 持久化；折叠态不受影响）。
@@ -172,7 +173,7 @@ const title       = useWorkspaces((s) => s.items.find((w) => w.workspaceId === w
    - `assistant/message`：按 content 块拆分——`text` 块 → **assistant 行**，`reasoning` 块 → **reasoning 行**（思考），`tool-call` 块跳过（避免与 tool/call 事件重复成卡）。
    - `assistant/chunk`：按 `blockType`（text / reasoning / tool-call）分块累计流式 partial（`block-start` 开块、`text-delta` / `reasoning-delta` / `tool-call-delta` 累积、`block-end` 落行）；`step/end` / `turn/end` 冲刷未收尾块为行；仍在流中的块以 `partials[]` 上报（客户端自动展开 + 光标）。
    - `tool/call` + `tool/result`：按 `callId` 配对成 **tool 行**（`callId` + 名称 + 原始参数 JSON + 结果文本 + 错误标记；客户端按官方 ToolRow 渲染：变体图标/标题/摘要 + IN/OUT 卡）；result 缺失时保持「运行中」。
-   - `running` = 最近 `turn/start` 无配对 `turn/end`；`lastSeq` = 最后事件 seq。监听 `session/event`（untagged）过滤 `session.id === residentId` 仅递增 revision。
+   - `running` = 最近 `turn/start` 无配对 `turn/end`；`lastSeq` = 最后事件 seq；**v0.4.7 起 `turn/end` 的 `reason.kind === 'error'` 折叠为 turn-error 行**（`text` = `reason.error.message`，`code` = `reason.error.code`）。监听 `session/event`（untagged）过滤 `session.id === residentId` 仅递增 revision。
 6. **卡片内发送/停止（客户端）**：`ctx.sessions.binding(residentId)`（纯解析，任何已列出会话惰性创建 scope+binding，无需先在中间栏打开）；`binding.session.prompt([{type:'text', text}], 'queue')` / `cancel()`（wire RPC，冷会话 host 侧自动恢复 agent，与 composer 同路径）；失败返回 `RpcResult`，消息不乐观上屏、行内展示 `error.message`。非当前会话无实时事件流（窗口只在会话成为「当前」时打开）→ 内容一律走轮询，不用 subscribe。
 7. **`sessions.binding(id)` 返回 undefined（会话尚未列入列表）**：短暂重试（列表拉取后即解析）；仍失败显示「会话不可用」。
 
