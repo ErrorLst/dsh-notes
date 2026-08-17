@@ -690,7 +690,7 @@ function setupScard(ctx) {
       if (p.kind === 'text' && p.text !== '') messages.push({ kind: 'assistant', id: p.id, text: p.text })
       else if (p.kind === 'reasoning' && p.text !== '') messages.push({ kind: 'reasoning', id: p.id, text: p.text })
       else if (p.kind === 'tool-call' && (p.name !== '' || p.args !== '')) {
-        messages.push({ kind: 'tool', id: p.id, name: p.name, args: p.args, result: null, isError: false, done: false })
+        messages.push({ kind: 'tool', id: p.id, ...(p.callId === '' ? {} : { callId: p.callId }), name: p.name, args: p.args, result: null, isError: false, done: false })
       }
       done.push(p.id)
     }
@@ -725,6 +725,7 @@ function setupScard(ctx) {
               label: form !== null ? CONTEXT_FORM_LABELS[form] : (provenance.role === 'recall' ? '跨会话召回' : '上下文注入'),
               producer: provenance.label ?? '',
               text,
+              source, // 原始 source（叶字段 JSON），客户端按官方表单化正文渲染
             }
             if (form === 'notice' && stringOf(source.summary) !== null) row.summary = source.summary
             messages.push(row)
@@ -764,8 +765,9 @@ function setupScard(ctx) {
             if (p.kind === 'reasoning') p.text += chunk.text ?? ''
           } else if (chunk.type === 'tool-call-delta') {
             let p = partials.get(chunk.index)
-            if (p === undefined) { p = { id: `p${seq}`, kind: 'tool-call', text: '', name: '', args: '' }; partials.set(chunk.index, p) }
+            if (p === undefined) { p = { id: `p${seq}`, kind: 'tool-call', text: '', name: '', args: '', callId: '' }; partials.set(chunk.index, p) }
             if (p.kind === 'tool-call') {
+              if (chunk.id !== undefined && typeof chunk.id === 'string' && chunk.id !== '') p.callId = chunk.id
               if (chunk.name !== undefined && typeof chunk.name === 'string' && chunk.name !== '') p.name = chunk.name
               p.args += chunk.argumentsDelta ?? ''
             }
@@ -776,7 +778,7 @@ function setupScard(ctx) {
               if (p.kind === 'text' && p.text !== '') messages.push({ kind: 'assistant', id: p.id, text: p.text })
               else if (p.kind === 'reasoning' && p.text !== '') messages.push({ kind: 'reasoning', id: p.id, text: p.text })
               else if (p.kind === 'tool-call' && (p.name !== '' || p.args !== '')) {
-                messages.push({ kind: 'tool', id: p.id, name: p.name, args: p.args, result: null, isError: false, done: false })
+                messages.push({ kind: 'tool', id: p.id, ...(p.callId === '' ? {} : { callId: p.callId }), name: p.name, args: p.args, result: null, isError: false, done: false })
               }
             }
           }
@@ -788,6 +790,7 @@ function setupScard(ctx) {
           const row = {
             kind: 'tool',
             id: `t${callId}`,
+            callId,
             name: typeof ev.data.name === 'string' ? ev.data.name : '',
             args: typeof ev.data.arguments === 'string' ? ev.data.arguments : '',
             result: null,
@@ -837,7 +840,7 @@ function setupScard(ctx) {
       if (p.kind === 'text' && p.text !== '') livePartials.push({ kind: 'assistant', id: p.id, text: p.text })
       else if (p.kind === 'reasoning' && p.text !== '') livePartials.push({ kind: 'reasoning', id: p.id, text: p.text })
       else if (p.kind === 'tool-call' && (p.name !== '' || p.args !== '')) {
-        livePartials.push({ kind: 'tool', id: p.id, name: p.name, args: p.args, result: null, isError: false, done: false })
+        livePartials.push({ kind: 'tool', id: p.id, ...(p.callId === '' ? {} : { callId: p.callId }), name: p.name, args: p.args, result: null, isError: false, done: false })
       }
     }
     return {

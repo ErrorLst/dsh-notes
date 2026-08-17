@@ -3,6 +3,7 @@
 > 版本：0.4 · 状态：**已实现（M1 融合完成 + transcript 分级折叠，待重启 DSH 后验收）** · 关联原型：`prototype/index.html`
 >
 > 变更记录：
+> 0.4.6 —— 披露行/拖拽把手**对齐官方实现**：思考（ReasoningRow）、上下文注入（ContextInjectionRow+ContextBody）、工具调用（ToolRow+IN/OUT 卡）改为与 DSH 会话视图逐条对应的结构/样式/文案（DisclosureRow 骨架：16px 图标槽 + 悬停换箭头 + 24px 行高 + 14px/24px 排版；Think 首行/末行摘要 + 运行扫描动画；上下文代码块正文 max-height 141px；工具变体图标 + 状态点 + 摘要）；分隔条与右缘宽度条改官方 AppFrame handle 悬浮胶囊样式（button-floating-fill/hover）。Host 上下文行透传原始 `source`、工具行增 `callId`。
 > 0.4.5 —— 分隔条**平时简洁、悬停/拖拽时强调**：静置为透明底 + 短浅手柄（低透明），hover/拖拽切换为底色条（bg-overlay + l2 边框）+ 品牌色长手柄。
 > 0.4.4 —— 竖栏**宽度可调**（§10.1 候选落地）：右边缘水平拖拽（220–480px，默认 280，localStorage 持久化；折叠态不受影响）。
 > 0.4.3 —— transcript 分级折叠（对齐 DSH 会话视图）：`user/message` 按 `source` 区分人类输入与**注入上下文**（工作区指令/目录/快照/通知/跨会话召回，按 dsh-client-runtime `contextProvenance` 规则投影标题与生产者）；`assistant/message` 的 reasoning 块与 `tool/call`+`tool/result` 成卡；客户端渲染为**可折叠披露行**（思考/上下文注入/工具调用），流式 partial 按块类型实时展开（提交 `7330770`，客户端版本标记 `data-notes-ver="7330770"`）。
@@ -31,14 +32,14 @@ dsh-notes 在 DSH Web 界面中提供**侧栏与对话区之间的常驻竖栏**
 | 能力 | 说明 |
 | --- | --- |
 | 常驻竖栏（顶栏之下全高） | 固定于**左侧边栏与中间对话区之间**：宽 280、**从顶部栏下缘到页面底部**（`top: <顶栏高>; bottom: 0`，不覆盖 DSH 上边栏）、无独立入口按钮、无弹窗；无会话 hero 视图时仍显示（小计仅全局 tab） |
-| 上下分区（明显分割） | **分隔条平时简洁**（透明底 + 短浅手柄，低透明），**悬停/拖拽时强调**（整条底色 `bg-overlay` + 上下边框 l2 + 品牌色长手柄）；拖拽调整比例（默认 上 ~46% / 下 ~54%，范围 25%–75%，双击复位），比例存 `localStorage['dsh-notes.split']` |
+| 上下分区（明显分割） | **分隔条与官方 AppFrame handle 同款**：透明热区，**悬停/拖拽时浮现悬浮胶囊**（32×12，`button-floating-fill` + `border-l2-darkmode-thin`，hover → `button-floating-hover` + `border-l3`）；拖拽调整比例（默认 上 ~46% / 下 ~54%，范围 25%–75%，双击复位），比例存 `localStorage['dsh-notes.split']` |
 | 分区标题（风格统一） | 两个分区各有一个**同款标题行**（蓝点 + 标题 + 下缘分隔线，高 40）：上「常驻会话」（+ 会话 id 胶囊 + 操作按钮），下「小计」（+ 作用域 tab 行）——字体/间距/描边完全一致 |
 | 折叠/展开 | 竖栏头部右侧「▾」按钮折叠；折叠后在同位置显示「📝 小记」胶囊按钮（点击展开）；折叠状态持久化；折叠/展开前先落盘随记 |
 | 宽度可调（水平拖拽） | 竖栏**右边缘**拖拽调整宽度（默认 280px，范围 220–480px，`localStorage['dsh-notes.width']` 持久化；拖拽时右缘显示品牌色竖线）；折叠态胶囊不受影响 |
 | 定位机制 | 与 v0.3 一致：`shell.overlay` 常驻条目 + `position: absolute` 浮层（定位上下文 = overlay 层，`inset: 0` 覆盖整个 AppFrame），不参与布局；`left` = AppFrame 网格第一列（侧栏列）实测宽度（向上找 grid 帧解析 `gridTemplateColumns`，MutationObserver 跟随折叠/拖拽）；`top: 0; bottom: 0`、`pointer-events: auto` |
 | —— 会话卡片（上半） —— | |
 | 常驻会话 | 插件专属会话：激活时 `agents.create`（无 cwd → 未分组），id 存 `~/.dsh/session-card.json`（沿用旧 dsh-session-card 路径，已建会话复用、历史保留）；进程重启后 `agents.resume` 恢复 |
-| 卡片内直接对话 | 消息列表（用户/助手气泡；**思考 / 上下文注入 / 工具调用为独立可折叠披露行**，与 DSH 会话视图一致——折叠头部：类型点 + 标题 + 生产者/状态，展开见正文/参数/结果；流式时自动展开并带光标）+ 输入发送 + 运行中可停止 |
+| 卡片内直接对话 | 消息列表（用户/助手气泡；**思考 / 上下文注入 / 工具调用为官方同款可折叠披露行**——DisclosureRow 骨架：16px 图标槽悬停换箭头 + 24px 行高 + 14px/24px 排版；思考行 Think 图标 + 首行/末行摘要 + 运行扫描动画；上下文行标题/生产者/摘要 + 表单化代码块正文（instructions 文件清单 / catalog 条目 / snapshot 分区 / notice 摘要 / relay 来源 / recall 计数 / opaque 源字段）；工具行变体图标 + 标题/摘要 + IN/OUT 卡 + 错误状态点）+ 输入发送 + 运行中可停止 |
 | 内容读取 | Host 折叠 `agent.session.events` 为**分级 transcript**（user / assistant / context / reasoning / tool 行，见 §3.8-5），客户端轮询 `chat-state`（运行中 800ms / 空闲 3s；发送后立即轮询；`lastSeq` 未变且非运行中跳过重渲染） |
 | 选择预设 | ⚙ 弹窗内 · `agentPresets` 名册；空白会话可切换（`presets.recompose` + `agent-preset/selected` 事件），已开始则锁定并提示 |
 | 选择模型 / 思考等级 | ⚙ 弹窗内 · `llm` 模型目录（provider 分组）+ 当前模型 `reasoning.efforts`（含「默认」）；经 `agent/request` 全局瀑布监听（untagged、按会话 id 过滤）覆盖 provider/model/reasoningEffort |
@@ -167,10 +168,10 @@ const title       = useWorkspaces((s) => s.items.find((w) => w.workspaceId === w
    - 设置：`llm.resolveCallConfig({provider, model, …reasoningEffort})` 校验 → 写入 override map → 尽力 `agentDefaultModel.saveSelection`（失败仅 warn）。
 4. **清空会话**：无内建清空 API → `workspaceRegistry.archiveSession(residentId)`（registry 全局归档，未分组会话适用）→ 新建常驻会话（§3.7 agents.create）→ 状态文件更新 → 删 override 旧条目。运行中拒绝。
 5. **transcript 分级折叠（chat-state，v0.4.3）**：从 `agent.session.events` 折叠为行序列（只返回最近 200 行，叶字段 JSON）：
-   - `user/message`：`data.source.kind === 'user'` → **user 行**（text 块拼接）；否则为**注入上下文 → context 行**（`label` = 表单中文名：instructions→工作区指令 / catalog→目录 / snapshot→快照 / notice→通知 / relay→转达 / recall→跨会话召回，未知 → 上下文注入；`producer` 按 dsh-client-runtime `contextProvenance` 规则投影：`agent-instructions` 取 `changes[].path`、`plugin` 取 `plugin`、`skill-invocation` 取 `name`、`session-reference` 取 `references[].label`；`form === 'notice'` 时附 `summary`）；`kind === 'tool'` 跳过（由 tool/result 成卡）。
+   - `user/message`：`data.source.kind === 'user'` → **user 行**（text 块拼接）；否则为**注入上下文 → context 行**（`label` = 表单中文名：instructions→工作区指令 / catalog→目录 / snapshot→快照 / notice→通知 / relay→转达 / recall→跨会话召回，未知 → 上下文注入；`producer` 按 dsh-client-runtime `contextProvenance` 规则投影：`agent-instructions` 取 `changes[].path`、`plugin` 取 `plugin`、`skill-invocation` 取 `name`、`session-reference` 取 `references[].label`；`form === 'notice'` 时附 `summary`；**v0.4.6 起透传原始 `source`**，客户端按官方 ContextBody 表单化渲染正文）；`kind === 'tool'` 跳过（由 tool/result 成卡）。
    - `assistant/message`：按 content 块拆分——`text` 块 → **assistant 行**，`reasoning` 块 → **reasoning 行**（思考），`tool-call` 块跳过（避免与 tool/call 事件重复成卡）。
    - `assistant/chunk`：按 `blockType`（text / reasoning / tool-call）分块累计流式 partial（`block-start` 开块、`text-delta` / `reasoning-delta` / `tool-call-delta` 累积、`block-end` 落行）；`step/end` / `turn/end` 冲刷未收尾块为行；仍在流中的块以 `partials[]` 上报（客户端自动展开 + 光标）。
-   - `tool/call` + `tool/result`：按 `callId` 配对成 **tool 行**（名称 + 原始参数 JSON + 结果文本 + 错误标记）；result 缺失时保持「运行中」。
+   - `tool/call` + `tool/result`：按 `callId` 配对成 **tool 行**（`callId` + 名称 + 原始参数 JSON + 结果文本 + 错误标记；客户端按官方 ToolRow 渲染：变体图标/标题/摘要 + IN/OUT 卡）；result 缺失时保持「运行中」。
    - `running` = 最近 `turn/start` 无配对 `turn/end`；`lastSeq` = 最后事件 seq。监听 `session/event`（untagged）过滤 `session.id === residentId` 仅递增 revision。
 6. **卡片内发送/停止（客户端）**：`ctx.sessions.binding(residentId)`（纯解析，任何已列出会话惰性创建 scope+binding，无需先在中间栏打开）；`binding.session.prompt([{type:'text', text}], 'queue')` / `cancel()`（wire RPC，冷会话 host 侧自动恢复 agent，与 composer 同路径）；失败返回 `RpcResult`，消息不乐观上屏、行内展示 `error.message`。非当前会话无实时事件流（窗口只在会话成为「当前」时打开）→ 内容一律走轮询，不用 subscribe。
 7. **`sessions.binding(id)` 返回 undefined（会话尚未列入列表）**：短暂重试（列表拉取后即解析）；仍失败显示「会话不可用」。
@@ -281,7 +282,7 @@ DomainSpec {
 | `scard-select-preset` | `presetId` | `{presetId}` 或 `{error: {code, message}}`（locked / unknown / invalid / not-attached） |
 | `scard-select-model` | `provider`, `model`, `effort?` | `{selected: {provider, model, effort?}}` 或 `{error}` |
 | `scard-clear` | — | `{sessionId}` 或 `{error}`（running） |
-| `scard-chat-state` | — | `{scard: {sessionId, lastSeq, running, partials: [{kind: 'assistant'\|'reasoning'\|'tool', …}], messages: [{kind: 'user'\|'assistant'\|'context'\|'reasoning'\|'tool', …}]}}` 或 `{scard: {cold: true}}`（行字段见 §3.8-5） |
+| `scard-chat-state` | — | `{scard: {sessionId, lastSeq, running, partials: [{kind: 'assistant'\|'reasoning'\|'tool', …}], messages: [{kind: 'user'\|'assistant'\|'context'\|'reasoning'\|'tool', …}]}}` 或 `{scard: {cold: true}}`（行字段见 §3.8-5；context 行含 `source`，tool 行含 `callId`） |
 
 - 小计动作错误：`scope: 'global'` 时 `workspaceId` 必须缺省；`scope: 'workspace'` 时 `workspaceId` 必填；否则 `bad-args`。成功返回 `{ok: true, state: <快照>}`；存储域不可用 `{ok: false, error: 'storage-unavailable'}`；`undo-delete` 无记录 404。
 - 卡片动作错误：返回 `{ok: false, error: {code, message}}`（HTTP 400）或 `{ok: false, error: 'scard-unavailable'}`（必要服务缺失）；`scard-chat-state` 轮询失败时客户端保留旧内容、下次重试。
