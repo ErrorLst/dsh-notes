@@ -1960,7 +1960,7 @@ function NotesDock(props) {
       'div',
       {
         className: 'dsh-notes-dock collapsed',
-        'data-notes-ver': '00962a9',
+        'data-notes-ver': 'e0404b9',
         ref: rootRef,
         // 折叠态贴底：显式 top auto，覆盖测量出的顶部偏移
         style: { left: `${left}px`, top: 'auto' },
@@ -2196,7 +2196,7 @@ function NotesDock(props) {
     'div',
     {
       className: 'dsh-notes-dock',
-      'data-notes-ver': '00962a9',
+      'data-notes-ver': 'e0404b9',
       ref: (node) => {
         rootRef.current = node
         dockRef.current = node
