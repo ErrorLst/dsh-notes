@@ -1,19 +1,21 @@
-# dsh-notes · 小记
+# dsh-notes · 小记（含常驻会话卡片）
 
-DSH（DeepSeek Harness）「小记」插件：常驻在侧栏与对话区之间的持久化轻量笔记栏，支持**全局**与**工作区**两种作用域。所有配色基于 DSH 主题令牌（`--dsw-alias-*`），自动适配明暗主题。
+DSH（DeepSeek Harness）「小记」插件：常驻在侧栏与对话区之间的**全高竖栏**，上半部分为**常驻会话卡片**（卡片内直接对话，融合自 dsh-session-card），下半部分为持久化轻量笔记栏（**全局**与**工作区**两种作用域）。所有配色基于 DSH 主题令牌（`--dsw-alias-*`），自动适配明暗主题。
 
-> 当前状态：**已实现**（M1 完成，M2-M5 待重启 DSH 后验收）。`src/` 双 half 已落地并构建，安装命令已验证。
+> 当前状态：**融合设计阶段（v0.4）**——小计 v0.3 已实现（M2-M5 待重启 DSH 后验收）；常驻会话卡片已并入设计（文档 + 原型，M0 融合原型待评审）。
 
 ## 特性
 
-- 📐 **常驻竖栏**：浮层贴住侧栏右缘（宽 280、部分高度、底部对齐），**不参与布局**——折叠/缩放不影响对话区宽度；可折叠成「小记」按钮条（状态持久化），侧栏折叠时位置自动跟随
+- 📐 **常驻竖栏（全高）**：浮层贴住侧栏右缘（宽 280、**全高**），**不参与布局**——折叠/缩放不影响对话区宽度；可折叠成「小记」按钮条（状态持久化），侧栏折叠时位置自动跟随
+- 💬 **常驻会话卡片（上半）**：卡片内直接对话 —— 消息列表 + 发送/停止 + 流式显示；头部 ⚙ 可设预设 / 模型 / 思考等级；清空会话（归档 + 新建）；独立于任何工作区（未分组常驻会话，状态文件 `~/.dsh/session-card.json`）
+- 🔀 **上下分区**：分隔条可拖拽调整会话卡片 / 小计的比例（比例持久化）
 - 🌍 全局小记：不分工作区，跟随用户
 - 🗂️ 工作区小记：以工作区为单位隔离，跟随当前工作区（取自 `useWorkspaces.recentWorkspaceId`）
 - 📋 **待办区**：分点待办 —— 添加、勾选/取消、双击行内编辑、删除、清空已完成、**置顶**、**拖拽排序**、**撤销删除**（5 秒内可恢复）
 - ✍️ **随记区**：自由多行文本 —— 随意记录、不需要分点，输入防抖 + 失焦自动保存
-- 🔒 **Agent 隔离**：小记内容对模型完全不可见 —— 不注册任何模型工具、不进提示词、不写会话日志，数据仅存于独立存储域
-- 💾 持久化：数据落盘 `~/.dsh/storages/notes.json`（DSH 存储域 `notes`，JSON 后端），刷新/重启不丢
-- 🎨 主题适配：仅使用 DSH 语义令牌（`--dsw-alias-bg-layer-1`、`--dsw-alias-label-*`、`--dsw-alias-brand-primary` 等），明暗自动切换
+- 🔒 **Agent 隔离（小计内容）**：小计内容对模型完全不可见 —— 不注册任何模型工具、不进提示词、不写会话日志，数据仅存于独立存储域；常驻会话是独立聊天通道，与 notes.json 互不相通
+- 💾 持久化：小计落盘 `~/.dsh/storages/notes.json`（存储域 `notes`，JSON 后端）；常驻会话走 DSH 原生会话日志
+- 🎨 主题适配：仅使用 DSH 语义令牌（`--dsw-alias-*`），明暗自动切换
 
 ## 快速开始
 
@@ -76,18 +78,21 @@ dsh web               # 或 dsh --profile web
 
 | 文档 | 说明 |
 | --- | --- |
-| [docs/design.md](docs/design.md) | 设计文档：需求、架构、数据模型、Host API 契约、插槽、主题适配规范、里程碑 |
-| [prototype/index.html](prototype/index.html) | HTML 原型（可交互）：明暗主题切换、宽/窄侧栏、完整面板交互，用浏览器直接打开 |
+| [docs/design.md](docs/design.md) | 设计文档：需求、架构、数据模型、Host API 契约（小计 + 会话卡片）、插槽、主题适配规范、里程碑 |
+| [docs/research.md](docs/research.md) | API 调研记录（会话卡片部分，融合自旧 dsh-session-card）：服务契约速查、关键机制验证、源码位置索引 |
+| [prototype/index.html](prototype/index.html) | HTML 原型（可交互）：明暗主题切换、宽/窄侧栏、全高竖栏（上会话卡片 / 下小计）、分隔条拖拽，用浏览器直接打开 |
 
 ## 目录结构
 
 ```
 dsh-notes/
 ├── src/
-│   ├── index.mjs          # Host half：存储域 + HTTP API（已实现）
-│   └── client/index.ts    # 浏览器 half：常驻竖栏（已实现）
+│   ├── index.mjs          # Host half：存储域 + HTTP API + 常驻会话管理（会话卡片）
+│   └── client/index.ts    # 浏览器 half：全高竖栏（上会话卡片 / 下小计）
 ├── prototype/index.html   # HTML 原型（样式基准）
-├── docs/design.md         # 设计文档
+├── docs/
+│   ├── design.md          # 设计文档（v0.4 融合版）
+│   └── research.md        # API 调研记录（会话卡片部分）
 ├── cordis.patch.yml       # bundle 组合补丁（挂 Host half）
 ├── tsdown.config.ts       # 双 half 构建
 └── package.json           # @dsh-external/dsh-notes（dsh.bundle + dsh.client 元数据）
