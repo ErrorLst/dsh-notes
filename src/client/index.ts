@@ -535,7 +535,12 @@ function NotesDock(props) {
       .then((response) => response.json())
       .then((result) => {
         if (result.ok === true) {
-          setData({ global: result.state.global, workspace: result.state.workspace })
+          setData((prev) => ({
+            global: result.state.global,
+            // 宿主端对「全局」动作返回的快照中 workspace 恒为 null（未查询工作区表）；
+            // 直接覆盖会把已加载的工作区数据显示成空（误以为被删）。保留本地值。
+            workspace: result.state.workspace !== null ? result.state.workspace : prev.workspace,
+          }))
           setError(null)
         } else {
           setError(result.error ?? 'action-failed')
@@ -767,7 +772,7 @@ function NotesDock(props) {
       'div',
       {
         className: 'dsh-notes-dock collapsed',
-        'data-notes-ver': '79b01c8',
+        'data-notes-ver': 'cc59b39',
         ref: rootRef,
         style: { left: `${left}px` },
         onMouseOver: onTipOver,
