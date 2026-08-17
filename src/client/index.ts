@@ -465,7 +465,21 @@ button.ds-leading { cursor: pointer; }
 }
 .sc-field select:focus { border-color: var(--dsw-alias-state-business-primary); }
 .sc-field select:disabled { opacity: 0.55; cursor: not-allowed; }
+.sc-field input {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 7px;
+  background: var(--dsw-alias-button-elevated-fill);
+  outline: none;
+  font-size: 12.5px;
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--ds-font-family-code, monospace);
+}
+.sc-field input:focus { border-color: var(--dsw-alias-state-business-primary); }
+.sc-field input::placeholder { color: var(--dsw-alias-label-caption); }
 .sc-popup-hint { font-size: 10.5px; color: var(--dsw-alias-state-warn-primary); }
+.sc-popup-hint.cwd { color: var(--dsw-alias-label-tertiary); }
 .sc-popup-foot { display: flex; justify-content: flex-end; flex: none; padding: 0 10px 10px; }
 .sc-popup-foot button {
   height: 26px;
@@ -1348,6 +1362,8 @@ function NotesDock(props) {
   const [cardError, setCardError] = useState(null)
   const [popupOpen, setPopupOpen] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const [cwdMsg, setCwdMsg] = useState(null)
+  const cwdInputRef = useRef(null)
   const editingRef = useRef(null)
   const memoTextRef = useRef('')
   const dirtyRef = useRef(false)
@@ -1888,6 +1904,27 @@ function NotesDock(props) {
     })
   }
 
+  /* 工作目录：留空/无效 → 临时目录；空白会话立即重建生效，已开始会话清空后生效 */
+  function onCwdSubmit() {
+    const input = cwdInputRef.current
+    if (input === null || card === null) return
+    const value = input.value.trim()
+    void scardPost('scard-select-cwd', { cwd: value === '' ? null : value }).then((result) => {
+      if (result.ok === true) {
+        if (result.cwd !== undefined && result.cwd.fallback === true) {
+          setCwdMsg('路径无效，已回退临时目录')
+        } else if (result.applied === false) {
+          setCwdMsg('会话已开始，工作目录将在清空后生效')
+        } else {
+          setCwdMsg(value === '' ? '已恢复默认（临时目录）' : '已应用')
+        }
+        void refreshCard()
+      } else {
+        setCardError(result.error?.message ?? '工作目录设置失败')
+      }
+    })
+  }
+
   function confirmClear() {
     void scardPost('scard-clear').then((result) => {
       setConfirming(false)
@@ -2309,6 +2346,29 @@ function NotesDock(props) {
                     disabled: efforts.length === 0,
                     onChange: onEffortChange,
                   }, ...effortOptions),
+                ),
+                React.createElement(
+                  'div',
+                  { className: 'sc-field' },
+                  React.createElement('label', null, '工作目录（cwd）'),
+                  React.createElement('input', {
+                    ref: cwdInputRef,
+                    type: 'text',
+                    placeholder: '留空 = 临时目录',
+                    autoComplete: 'off',
+                    spellCheck: false,
+                    defaultValue: card !== null && card.cwd !== undefined && card.cwd.configured !== null ? card.cwd.configured : '',
+                    onBlur: onCwdSubmit,
+                    onKeyDown: (event) => { if (event.key === 'Enter') { event.preventDefault(); onCwdSubmit() } },
+                  }),
+                  cwdMsg !== null
+                    ? React.createElement('span', { className: 'sc-popup-hint' }, cwdMsg)
+                    : null,
+                  card !== null && card.cwd !== undefined && card.cwd.effective !== null
+                    ? React.createElement('span', { className: 'sc-popup-hint cwd' },
+                        `当前：${card.cwd.effective}${card.cwd.fallback === true ? '（临时目录）' : ''}`,
+                      )
+                    : null,
                 ),
               ),
               React.createElement(
