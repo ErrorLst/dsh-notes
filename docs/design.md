@@ -155,7 +155,7 @@ const title       = useWorkspaces((s) => s.items.find((w) => w.workspaceId === w
 
 ### 3.8 会话卡片关键机制（融合自旧 dsh-session-card research.md §3，实现依据）
 
-1. **常驻会话创建/恢复**：`agents.create`（公开服务，走 agent 工厂完整路径：持久化 + setup + announce）；`meta: {cwd}` —— v0.4.10 起为**可配置工作目录**（⚙ 输入；未配置/路径无效 → `{tmpdir}/dsh-notes-resident`；cwd 在创建时写入 header，工具与 `{{cwd}}` 提示词变量都读 header.cwd，无法事后修改）；冷会话（重启后）用 `agents.resume({resumeSessionId, agentOptions, setup})` 恢复，`setup` 内 `presets.mount(agentCtx, 折叠出的预设 id)` + agent 作用域注册 `cwd` 变量兜底（遮蔽全局注册，防 persona `{{cwd}}` 组装失败）。
+1. **常驻会话创建/恢复**：`agents.create`（公开服务，走 agent 工厂完整路径：持久化 + setup + announce）；`meta: {cwd}` —— v0.4.10 起为**可配置工作目录**（⚙ 输入；未配置/路径无效 → `{tmpdir}/dsh-notes-resident`；cwd 在创建时写入 header，工具与 `{{cwd}}` 提示词变量都读 header.cwd，无法事后修改）；冷会话（重启后）用 `agents.resume({resumeSessionId, agentOptions, setup})` 恢复，`setup` 内 `presets.mount(agentCtx, 折叠出的预设 id)` + agent 作用域注册 `cwd` 变量兜底（遮蔽全局注册，防 persona `{{cwd}}` 组装失败）。**侧栏分组不受 cwd 影响（已核实）**：侧栏工作区 = `workspaceRegistry` 记录，记录仅由一次性 bootstrap 或显式「添加工作区」/apiproxy 建会话创建；常驻会话走宿主侧 `agents.create`、从不 attach 任何记录 → 始终是 stray 会话，显示在「未分组」（有内容后；空白会话本就不显示），cwd 只作用于工具与提示词。
 2. **预设切换**：空白检查 `!session.events.some(e => e.type === 'turn/start')`；`presets.recompose(agent.ctx, id)` + `session.append('agent-preset/selected', {agentPreset: id})`（log-only、无 turn 约束，可安全追加）；按 sessionId 串行化；失败类别 `agent-preset-not-found` / `agent-preset-invalid` / `agent-preset-locked`。
 3. **模型覆盖**：**不用**「改日志头」（`request/header` 只能在 open turn 内追加，不变式否决）；用全局 untagged `agent/request` 瀑布监听器：
    ```js
