@@ -1,4 +1,4 @@
-// dsh-notes —— 浏览器 half（官方 client bundle，__ModuleLoader__ 契约）。
+﻿// dsh-notes —— 浏览器 half（官方 client bundle，__ModuleLoader__ 契约）。
 //
 // 职责：
 //   1. shell.overlay 注册常驻条目（id: notes-dock）——「小计」竖栏（v0.4 融合）：
@@ -753,7 +753,9 @@ function NotesDock(props) {
     if (tipElOf(event.relatedTarget) === null) hideTip()
   }
 
-  /* ---------- 竖栏定位：left 跟随侧栏列宽，top 跟随会话头部（上边栏）下缘 ---------- */
+  /* ---------- 竖栏定位：left 跟随侧栏列宽，top 跟随对话滚动体（全高基准） ----------
+     全高 = .wSkVaW_scrollBody（对话滚动体，data-conversation-scroll）顶部到页面底部：
+     不覆盖上边栏（会话头部），也不侵入对话区自身的滚动体区域之外。 */
   useEffect(() => {
     const root = rootRef.current
     if (root === null) return
@@ -779,19 +781,28 @@ function NotesDock(props) {
         break
       }
     }
+    const findScrollBody = () => {
+      if (center === null) return null
+      try {
+        // 稳定属性优先（CSS module hash 类名可能随版本变化）
+        const hit = center.querySelector('[data-conversation-scroll]')
+        if (hit !== null) return hit
+        const byClass = center.querySelector('[class*="scrollBody"]')
+        if (byClass !== null) return byClass
+      } catch { /* ignore */ }
+      return null
+    }
     const updateLeft = () => {
       const columns = getComputedStyle(frame).gridTemplateColumns.split(' ')
       const px = parseFloat(columns[0])
       if (Number.isFinite(px)) setLeft(px)
     }
     const updateTop = () => {
-      if (center === null) return
-      const header = center.firstElementChild
-      if (header === null) return
+      const base = findScrollBody() ?? center?.firstElementChild ?? null
+      if (base === null) return
       const frameRect = frame.getBoundingClientRect()
-      const headerRect = header.getBoundingClientRect()
-      // 顶栏之下全高：不覆盖 DSH 上边栏（会话头部）
-      setTop(Math.max(0, headerRect.bottom - frameRect.top))
+      const baseRect = base.getBoundingClientRect()
+      setTop(Math.max(0, baseRect.top - frameRect.top))
     }
     updateLeft()
     updateTop()
@@ -803,6 +814,8 @@ function NotesDock(props) {
       ro = new ResizeObserver(onResize)
       ro.observe(frame)
       if (center !== null) ro.observe(center)
+      const scroll = findScrollBody()
+      if (scroll !== null) ro.observe(scroll)
     }
     window.addEventListener('resize', onResize)
     return () => {
@@ -1091,13 +1104,21 @@ function NotesDock(props) {
       .catch(() => ({ ok: false, error: 'network' }))
   }
 
+  function scardErrorText(result) {
+    const raw = result?.error?.message ?? result?.error
+    if (raw === 'bad-args' || raw === 'unknown-action') return '宿主端未启用会话卡片功能，请重启 DSH 后刷新'
+    return raw ?? '操作失败'
+  }
+
   const refreshCard = useCallback(() => {
     return scardPost('scard-state').then((result) => {
       if (result.ok === true && result.scard) {
         setCard(result.scard)
         setCardError(null)
+      } else if (result.error === 'scard-unavailable' || result.error === 'scard-failed') {
+        setCardError('会话卡片暂不可用（宿主需重启 DSH 后生效）')
       } else {
-        setCardError(result.error?.message ?? result.error ?? 'scard-state 失败')
+        setCardError(scardErrorText(result))
       }
       return result
     })
@@ -1116,6 +1137,8 @@ function NotesDock(props) {
       })
     } else if (result.error === 'scard-unavailable' || result.error === 'scard-failed') {
       setCardError('会话卡片暂不可用（宿主需重启 DSH 后生效）')
+    } else {
+      setCardError(scardErrorText(result))
     }
     return result
   }, [])
@@ -1273,7 +1296,7 @@ function NotesDock(props) {
       'div',
       {
         className: 'dsh-notes-dock collapsed',
-        'data-notes-ver': '2bc8a83',
+        'data-notes-ver': '24dd1f2',
         ref: rootRef,
         // 折叠态贴底：显式 top auto，覆盖测量出的顶部偏移
         style: { left: `${left}px`, top: 'auto' },
@@ -1474,7 +1497,9 @@ function NotesDock(props) {
 
   /* ---- 卡片状态行 ---- */
   const running = chat !== null && chat.cold !== true && chat.running === true
-  const statusText = running ? '运行中…' : (card !== null && card.blank === true ? '空白 · 预设可切换' : '已开始 · 预设已锁定')
+  const statusText = running
+    ? '运行中…'
+    : (card === null ? '加载中…' : (card.blank === true ? '空白 · 预设可切换' : '已开始 · 预设已锁定'))
 
   return React.createElement(
     'div',
