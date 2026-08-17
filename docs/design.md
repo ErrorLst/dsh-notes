@@ -3,6 +3,7 @@
 > 版本：0.4 · 状态：**已实现（M1 融合完成 + transcript 分级折叠，待重启 DSH 后验收）** · 关联原型：`prototype/index.html`
 >
 > 变更记录：
+> 0.4.4 —— 竖栏**宽度可调**（§10.1 候选落地）：右边缘水平拖拽（220–480px，默认 280，localStorage 持久化；折叠态不受影响）。
 > 0.4.3 —— transcript 分级折叠（对齐 DSH 会话视图）：`user/message` 按 `source` 区分人类输入与**注入上下文**（工作区指令/目录/快照/通知/跨会话召回，按 dsh-client-runtime `contextProvenance` 规则投影标题与生产者）；`assistant/message` 的 reasoning 块与 `tool/call`+`tool/result` 成卡；客户端渲染为**可折叠披露行**（思考/上下文注入/工具调用），流式 partial 按块类型实时展开（提交 `7330770`，客户端版本标记 `data-notes-ver="7330770"`）。
 > 0.4.2 —— 融合实现落地（src 双 half）：Host 增 scard-* 动作 + 常驻会话管理 + agent/request 模型覆盖 + transcript 折叠；Client 改全高双分区（上卡片/分隔条/下小计），顶栏之下定位（提交 `9ce1cfb`，客户端版本标记 `data-notes-ver="2bc8a83"`）。
 > 0.4.1 —— 评审修正：竖栏为**「上边栏之下」的全高**（从 DSH 顶部栏下缘到页面底部，不覆盖上边栏）；上下两部分之间的**分隔条明显化**（整条底色 + 抓握手柄）。
@@ -32,6 +33,7 @@ dsh-notes 在 DSH Web 界面中提供**侧栏与对话区之间的常驻竖栏**
 | 上下分区（明显分割） | **分隔条为整条底色条（`bg-overlay` + 上下边框 l2）+ 居中抓握手柄**，拖拽调整比例（默认 上 ~46% / 下 ~54%，范围 25%–75%，双击复位），hover/拖拽时手柄高亮为品牌色；比例存 `localStorage['dsh-notes.split']` |
 | 分区标题（风格统一） | 两个分区各有一个**同款标题行**（蓝点 + 标题 + 下缘分隔线，高 40）：上「常驻会话」（+ 会话 id 胶囊 + 操作按钮），下「小计」（+ 作用域 tab 行）——字体/间距/描边完全一致 |
 | 折叠/展开 | 竖栏头部右侧「▾」按钮折叠；折叠后在同位置显示「📝 小记」胶囊按钮（点击展开）；折叠状态持久化；折叠/展开前先落盘随记 |
+| 宽度可调（水平拖拽） | 竖栏**右边缘**拖拽调整宽度（默认 280px，范围 220–480px，`localStorage['dsh-notes.width']` 持久化；拖拽时右缘显示品牌色竖线）；折叠态胶囊不受影响 |
 | 定位机制 | 与 v0.3 一致：`shell.overlay` 常驻条目 + `position: absolute` 浮层（定位上下文 = overlay 层，`inset: 0` 覆盖整个 AppFrame），不参与布局；`left` = AppFrame 网格第一列（侧栏列）实测宽度（向上找 grid 帧解析 `gridTemplateColumns`，MutationObserver 跟随折叠/拖拽）；`top: 0; bottom: 0`、`pointer-events: auto` |
 | —— 会话卡片（上半） —— | |
 | 常驻会话 | 插件专属会话：激活时 `agents.create`（无 cwd → 未分组），id 存 `~/.dsh/session-card.json`（沿用旧 dsh-session-card 路径，已建会话复用、历史保留）；进程重启后 `agents.resume` 恢复 |
@@ -75,7 +77,7 @@ dsh-notes 在 DSH Web 界面中提供**侧栏与对话区之间的常驻竖栏**
 
 - 竖栏是 `shell.overlay` 的一个**常驻条目**（id `notes-dock`，v0.4 起同时承载会话卡片，不再需要第二个 id；旧 `session-card` 条目由动态插件持有，融合后废弃）。
 - overlay 层点击穿透（`.pI_x6G_overlayLayer`：`position:absolute; inset:0`，z-index 20），竖栏根元素需 `pointer-events: auto`。
-- 定位：`position: absolute; top: <顶部栏高度>; bottom: 0; width: 280px`，定位上下文即 overlay 层；`left` 取自 AppFrame `grid-template-columns` 第一列（帧元素通过 `dockEl.parentElement…` 向上找 display:grid 节点），MutationObserver（`attributeFilter: ['style']`）+ `window.resize` 跟随侧栏折叠/拖拽。
+- 定位：`position: absolute; top: <顶部栏高度>; bottom: 0; width: 280px（默认，220–480 可拖拽调整，见功能清单）`，定位上下文即 overlay 层；`left` 取自 AppFrame `grid-template-columns` 第一列（帧元素通过 `dockEl.parentElement…` 向上找 display:grid 节点），MutationObserver（`attributeFilter: ['style']`）+ `window.resize` 跟随侧栏折叠/拖拽。
 - **顶部栏之下（v0.4.1）**：overlay 层 `inset: 0` 覆盖整个 AppFrame（含顶部栏区域），竖栏不能从 `top: 0` 开始；`top` 取**顶部栏下缘**——从 overlay 挂载容器向上定位 AppFrame 网格帧，测量其第一行（顶部栏）的高度（具体测量点在实现阶段按真实 DOM 结构核实，与 left 的 MutationObserver 同步机制共用）。原型以 `syncDockPos()` 模拟（测量 `#topbar.offsetHeight`）。
 - 折叠态：仅渲染胶囊按钮（「📝 小记」+ 展开箭头），点击展开；折叠状态存 `localStorage['dsh-notes.collapsed']`。
 - 注册范式：
@@ -349,7 +351,7 @@ dsh-notes/
 
 ### 10.1 后续候选功能（v0.3 评审结论 + v0.4 增补）
 
-> v0.3 已采纳并实现：撤销删除、置顶与拖拽排序；作用域调整为工作区。v0.4 采纳：融合常驻会话卡片（上/下分区）。
+> v0.3 已采纳并实现：撤销删除、置顶与拖拽排序；作用域调整为工作区。v0.4 采纳：融合常驻会话卡片（上/下分区）；v0.4.4 采纳：竖栏宽度可调。
 > 以下候选未纳入本迭代，将来需要时按此列表评估。
 
 | 候选 | 痛点 | 实现路径（基于已核实能力） |
@@ -360,7 +362,6 @@ dsh-notes/
 | 导出/备份 | 唯一副本是 notes.json | 竖栏导出 JSON/Markdown 下载 |
 | Host API 冒烟测试 | M2/M3 人工验收 | node --test 起临时端口打 API |
 | 多窗口实时同步 | 秒级延迟 | SSE 推送 `domain/changed` |
-| 竖栏宽度可调 | 固定 280px | 拖拽竖栏边缘 |
 | 卡片高度独立折叠 | 全高竖栏占用过多 | 会话卡片区单独折叠成一行 |
 | 会话卡片常驻会话位置可配置 | 固定「未分组」 | 状态文件支持指定 workspaceId（meta.cwd） |
 

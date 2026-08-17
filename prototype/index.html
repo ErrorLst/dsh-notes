@@ -573,7 +573,7 @@ body.rail .foot-quota .rail-only { display: inline; }
   left: var(--dsh-notes-dock-left, 260px);
   top: var(--dsh-notes-dock-top, 48px);
   bottom: 0;
-  width: 280px;
+  width: var(--dsh-notes-dock-width, 280px);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -968,6 +968,35 @@ body.rail .foot-quota .rail-only { display: inline; }
   background: var(--dsw-alias-state-business-primary);
   width: 56px;
 }
+.notes-dock.split-dragging { user-select: none; -webkit-user-select: none; cursor: row-resize; }
+
+/* 右边缘水平拖拽（调整竖栏宽度） */
+.dock-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -4px;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 6;
+}
+.dock-resizer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
+}
+.dock-resizer:hover::before,
+.notes-dock.resize-dragging .dock-resizer::before {
+  background: var(--dsw-alias-state-business-primary);
+}
+.notes-dock.resize-dragging { user-select: none; -webkit-user-select: none; cursor: col-resize; }
+.notes-dock.collapsed .dock-resizer { display: none; }
 .notes-dock.split-dragging { user-select: none; -webkit-user-select: none; cursor: row-resize; }
 
 /* ==========================================================================
@@ -1499,6 +1528,9 @@ body.rail .foot-quota .rail-only { display: inline; }
       </div>
     </section>
   </div>
+
+  <!-- ===== 右边缘水平拖拽条（调整竖栏宽度） ===== -->
+  <div class="dock-resizer" id="dockResizer" title="拖动调整竖栏宽度"></div>
 </section>
 
 <!-- ====================== 原型演示工具 ====================== -->
@@ -1517,6 +1549,7 @@ body.rail .foot-quota .rail-only { display: inline; }
   <b>dsh-notes 融合原型（v0.4）</b><br/>
   · 竖栏占据<b>上边栏之下</b>的整列高度（不覆盖顶部栏）：<b>上 = 常驻会话卡片，下 = 小计</b>（标题同款样式）<br/>
   · 中间分隔条（带底色与手柄）拖拽调整上下比例（双击复位 46%），折叠/比例均持久化<br/>
+  · 竖栏<b>右边缘拖拽调整宽度</b>（220–480，持久化）<br/>
   · 上半卡片：直接对话（发送/停止/流式）、⚙ 预设/模型/思考等级、清空会话（归档+新建）<br/>
   · 下半小计：全局/工作区 tab、待办（勾选/编辑/置顶/拖拽/撤销/清空）、随记自动保存<br/>
   · 数据存 localStorage（模拟持久化）；右上「会话：空白/已开始」切换演示预设锁定
@@ -1616,6 +1649,7 @@ function load() {
     rail: !!saved.rail,
     dark: !!saved.dark,
     split: typeof saved.split === 'number' ? saved.split : 46,
+    dockWidth: typeof saved.dockWidth === 'number' ? Math.min(480, Math.max(220, Math.round(saved.dockWidth))) : 280,
   }
 }
 function defaults() {
@@ -1639,6 +1673,7 @@ function defaults() {
     rail: false,
     dark: false,
     split: 46,
+    dockWidth: 280,
   }
 }
 function cloneScope(s) { return { todos: s.todos.map(clone), memo: s.memo } }
@@ -1647,6 +1682,7 @@ function persist() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     global: state.global, workspaces: state.workspaces, card: state.card, selected: state.selected,
     tab: state.tab, collapsed: state.collapsed, rail: state.rail, dark: state.dark, split: state.split,
+    dockWidth: state.dockWidth,
   }))
 }
 
@@ -1944,6 +1980,7 @@ function onMemoBlur() {
 function renderDock() {
   const dock = $('notesDock')
   dock.classList.toggle('collapsed', state.collapsed)
+  dock.style.setProperty('--dsh-notes-dock-width', state.dockWidth + 'px')
   if (state.collapsed) return
   dock.style.setProperty('--sc-ratio', state.split + '%')
   renderCard()
@@ -2018,6 +2055,40 @@ $('dockSplitter').addEventListener('dblclick', () => {
   $('notesDock').style.setProperty('--sc-ratio', state.split + '%')
   persist()
   toastMsg('上下比例已复位 46% / 54%')
+})
+
+/* 右边缘：拖拽调整竖栏宽度（220–480，持久化） */
+const WIDTH_MIN = 220
+const WIDTH_MAX = 480
+let widthDrag = null
+
+$('dockResizer').addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'mouse' && e.button !== 0) return
+  e.preventDefault()
+  widthDrag = { id: e.pointerId }
+  $('notesDock').classList.add('resize-dragging')
+  try { e.target.setPointerCapture(e.pointerId) } catch {}
+})
+
+$('dockResizer').addEventListener('pointermove', (e) => {
+  if (!widthDrag) return
+  const dock = $('notesDock')
+  const left = dock.getBoundingClientRect().left
+  state.dockWidth = Math.round(Math.min(WIDTH_MAX, Math.max(WIDTH_MIN, e.clientX - left)))
+  dock.style.setProperty('--dsh-notes-dock-width', state.dockWidth + 'px')
+})
+
+$('dockResizer').addEventListener('pointerup', (e) => {
+  if (!widthDrag) return
+  widthDrag = null
+  $('notesDock').classList.remove('resize-dragging')
+  persist()
+})
+
+$('dockResizer').addEventListener('pointercancel', () => {
+  widthDrag = null
+  $('notesDock').classList.remove('resize-dragging')
+  persist()
 })
 
 /* ======================================================================

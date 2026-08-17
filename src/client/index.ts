@@ -28,6 +28,10 @@ const SPLIT_KEY = 'dsh-notes.split'
 const SPLIT_DEFAULT = 46
 const SPLIT_MIN = 25
 const SPLIT_MAX = 75
+const WIDTH_KEY = 'dsh-notes.width'
+const WIDTH_DEFAULT = 280
+const WIDTH_MIN = 220
+const WIDTH_MAX = 480
 const MEMO_DEBOUNCE_MS = 600
 const UNDO_TTL_MS = 5000
 const POLL_RUNNING_MS = 800
@@ -453,6 +457,34 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 }
 .dsh-notes-dock.split-dragging { user-select: none; -webkit-user-select: none; cursor: row-resize; }
 
+/* ===== 右边缘水平拖拽（调整竖栏宽度） ===== */
+.dock-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -4px;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 6;
+}
+.dock-resizer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
+}
+.dock-resizer:hover::before,
+.dsh-notes-dock.resize-dragging .dock-resizer::before {
+  background: var(--dsw-alias-state-business-primary);
+}
+.dsh-notes-dock.resize-dragging { user-select: none; -webkit-user-select: none; cursor: col-resize; }
+.dsh-notes-dock.collapsed .dock-resizer { display: none; }
+
 /* ===== 下半：小计 ===== */
 .np-section { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .np-tabs { display: flex; gap: 2px; flex: none; padding: 6px 12px 0; }
@@ -778,6 +810,13 @@ function NotesDock(props) {
       if (Number.isFinite(value)) return Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, value))
     } catch { /* ignore */ }
     return SPLIT_DEFAULT
+  })
+  const [width, setWidth] = useState(() => {
+    try {
+      const value = Number(localStorage.getItem(WIDTH_KEY))
+      if (Number.isFinite(value)) return Math.min(WIDTH_MAX, Math.max(WIDTH_MIN, Math.round(value)))
+    } catch { /* ignore */ }
+    return WIDTH_DEFAULT
   })
   const [data, setData] = useState({ global: { todos: [], memo: '' }, workspace: null })
   const [error, setError] = useState(null)
@@ -1373,8 +1412,28 @@ function NotesDock(props) {
     try { localStorage.setItem(SPLIT_KEY, String(SPLIT_DEFAULT)) } catch { /* ignore */ }
   }
 
+  /* ---------- 右边缘水平拖拽（调整竖栏宽度） ---------- */
+  const widthDragRef = useRef(null)
+  function onWidthPointerDown(event) {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    event.preventDefault()
+    widthDragRef.current = event.pointerId
+    if (dockRef.current !== null) dockRef.current.classList.add('resize-dragging')
+    try { event.currentTarget.setPointerCapture(event.pointerId) } catch { /* ignore */ }
+  }
+  function onWidthPointerMove(event) {
+    if (widthDragRef.current === null) return
+    const next = Math.round(Math.min(WIDTH_MAX, Math.max(WIDTH_MIN, event.clientX - left)))
+    setWidth(next)
+    try { localStorage.setItem(WIDTH_KEY, String(next)) } catch { /* ignore */ }
+  }
+  function onWidthPointerUp() {
+    widthDragRef.current = null
+    if (dockRef.current !== null) dockRef.current.classList.remove('resize-dragging')
+  }
+
   /* ---------- 渲染 ---------- */
-  const dockStyle = { left: `${left}px`, top: `${top}px`, '--sc-ratio': `${split}%` }
+  const dockStyle = { left: `${left}px`, top: `${top}px`, width: `${width}px`, '--sc-ratio': `${split}%` }
 
   if (collapsed) {
     return React.createElement(
@@ -1872,6 +1931,14 @@ function NotesDock(props) {
         ),
       ),
     ),
+    React.createElement('div', {
+      className: 'dock-resizer',
+      'data-tip': '拖动调整竖栏宽度',
+      onPointerDown: onWidthPointerDown,
+      onPointerMove: onWidthPointerMove,
+      onPointerUp: onWidthPointerUp,
+      onPointerCancel: onWidthPointerUp,
+    }),
     React.createElement('div', { className: 'np-tip', ref: tipRef, hidden: true }),
   )
 }
