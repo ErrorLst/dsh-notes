@@ -3,6 +3,7 @@
 > 版本：0.4 · 状态：**已实现（M1 融合完成 + transcript 分级折叠，待重启 DSH 后验收）** · 关联原型：`prototype/index.html`
 >
 > 变更记录：
+> 0.4.11 —— 分隔条改为**明显的分割细线**（全宽 1px `border-l2`，9px 热区本身即拖拽把手）；拖拽样式对齐 **DSH 原生**（无悬浮胶囊/底色/手柄，仅 `row-resize`/`col-resize` 指针变化；右缘宽度拖拽同改）。
 > 0.4.10 —— **常驻会话工作目录可配置**：⚙ 弹窗新增「工作目录（cwd）」输入；未配置或路径无效（非绝对路径/不存在/非目录）→ 自动回退系统临时目录 `{tmpdir}/dsh-notes-resident`；cwd 在会话创建时写入 header（工具与 `{{cwd}}` 都读 header.cwd），空白会话立即重建生效、已开始会话在清空后生效；`scard-select-cwd` 动作 + 状态文件 `cwd` 字段。
 > 0.4.9 —— **修复常驻会话提示词组装失败**：常驻会话无 cwd，而 deployment/preset persona 引用 `{{cwd}}` → 「prompt variable has no value」回合错误。修复：setup 时在 agent 作用域注册 `cwd` 变量兜底（`session.header.cwd` 缺省时回退 `sandboxPolicy.workspaceRoot`，遮蔽全局注册）。
 > 0.4.8 —— 卡片**简化显示**：只渲染用户输入 / 模型输出 / 回合错误；上下文注入、思考、工具调用行由 Host 照常折叠但客户端不再渲染（随时可恢复）。
@@ -36,10 +37,10 @@ dsh-notes 在 DSH Web 界面中提供**侧栏与对话区之间的常驻竖栏**
 | 能力 | 说明 |
 | --- | --- |
 | 常驻竖栏（顶栏之下全高） | 固定于**左侧边栏与中间对话区之间**：宽 280、**从顶部栏下缘到页面底部**（`top: <顶栏高>; bottom: 0`，不覆盖 DSH 上边栏）、无独立入口按钮、无弹窗；无会话 hero 视图时仍显示（小计仅全局 tab） |
-| 上下分区（明显分割） | **分隔条与官方 AppFrame handle 同款**：透明热区，**悬停/拖拽时浮现悬浮胶囊**（32×12，`button-floating-fill` + `border-l2-darkmode-thin`，hover → `button-floating-hover` + `border-l3`）；拖拽调整比例（默认 上 ~46% / 下 ~54%，范围 25%–75%，双击复位），比例存 `localStorage['dsh-notes.split']` |
+| 上下分区（明显分割） | **分隔条 = 明显的分割细线**（全宽 1px `border-l2`，9px 热区本身即拖拽把手）；拖拽样式 = **DSH 原生**（无特殊样式，仅 `row-resize` 指针变化）；调整比例（默认 上 ~46% / 下 ~54%，范围 25%–75%，双击复位），比例存 `localStorage['dsh-notes.split']` |
 | 分区标题（风格统一） | 两个分区各有一个**同款标题行**（蓝点 + 标题 + 下缘分隔线，高 40）：上「常驻会话」（+ 会话 id 胶囊 + 操作按钮），下「小计」（+ 作用域 tab 行）——字体/间距/描边完全一致 |
 | 折叠/展开 | 竖栏头部右侧「▾」按钮折叠；折叠后在同位置显示「📝 小记」胶囊按钮（点击展开）；折叠状态持久化；折叠/展开前先落盘随记 |
-| 宽度可调（水平拖拽） | 竖栏**右边缘**拖拽调整宽度（默认 280px，范围 220–480px，`localStorage['dsh-notes.width']` 持久化；拖拽时右缘显示品牌色竖线）；折叠态胶囊不受影响 |
+| 宽度可调（水平拖拽） | 竖栏**右边缘**拖拽调整宽度（默认 280px，范围 220–480px，`localStorage['dsh-notes.width']` 持久化；拖拽样式 = DSH 原生：不可见热区，仅 `col-resize` 指针变化）；折叠态胶囊不受影响 |
 | 定位机制 | 与 v0.3 一致：`shell.overlay` 常驻条目 + `position: absolute` 浮层（定位上下文 = overlay 层，`inset: 0` 覆盖整个 AppFrame），不参与布局；`left` = AppFrame 网格第一列（侧栏列）实测宽度（向上找 grid 帧解析 `gridTemplateColumns`，MutationObserver 跟随折叠/拖拽）；`top: 0; bottom: 0`、`pointer-events: auto` |
 | —— 会话卡片（上半） —— | |
 | 常驻会话 | 插件专属会话：激活时 `agents.create`（`meta.cwd` = 配置的工作目录，未配置/无效 → 系统临时目录 `{tmpdir}/dsh-notes-resident`），id 与 cwd 存 `~/.dsh/session-card.json`（沿用旧 dsh-session-card 路径，已建会话复用、历史保留）；进程重启后 `agents.resume` 恢复，空白会话与配置 cwd 不一致时自动重建 |

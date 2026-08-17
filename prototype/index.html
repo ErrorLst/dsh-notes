@@ -993,38 +993,26 @@ button.ds-leading { cursor: pointer; }
 .sc-popup-foot button:hover { opacity: 0.9; }
 
 /* ==========================================================================
-   分隔条（官方 AppFrame handle 同款：透明热区 + 悬停浮现悬浮胶囊）
+   分隔条（明显的分割细线，本身即拖拽把手；拖拽样式 = DSH 原生：无特殊样式，仅指针变化）
    ========================================================================== */
 .dock-splitter {
   flex: none;
-  height: 12px;
+  height: 9px;
   display: flex;
   align-items: center;
-  justify-content: center;
   cursor: row-resize;
   z-index: 5;
   touch-action: none;
 }
 .dock-splitter::before {
   content: '';
-  box-sizing: border-box;
-  background: var(--dsw-alias-button-floating-fill);
-  border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
-  opacity: 0;
-  width: 32px;
-  height: 12px;
-  border-radius: 10px;
-  transition: opacity var(--ds-transition-duration-slow) var(--ds-ease-in-out), background var(--ds-transition-duration-slow) var(--ds-ease-in-out);
-}
-.dock-splitter:hover::before,
-.notes-dock.split-dragging .dock-splitter::before {
-  opacity: 1;
-  background: var(--dsw-alias-button-floating-hover);
-  border-color: var(--dsw-alias-border-l3);
+  width: 100%;
+  height: 1px;
+  background: var(--dsw-alias-border-l2);
 }
 .notes-dock.split-dragging { user-select: none; -webkit-user-select: none; cursor: row-resize; }
 
-/* 右缘宽度拖拽（官方 AppFrame handle 同款：8px 热区 + 悬停浮现竖胶囊） */
+/* 右缘宽度拖拽（DSH 原生样式：不可见热区，仅指针变化） */
 .dock-resizer {
   position: absolute;
   top: 0;
@@ -1034,27 +1022,6 @@ button.ds-leading { cursor: pointer; }
   cursor: col-resize;
   touch-action: none;
   z-index: 6;
-}
-.dock-resizer::before {
-  content: '';
-  box-sizing: border-box;
-  background: var(--dsw-alias-button-floating-fill);
-  border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
-  opacity: 0;
-  width: 12px;
-  height: 32px;
-  border-radius: 10px;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  transition: opacity var(--ds-transition-duration-slow) var(--ds-ease-in-out), background var(--ds-transition-duration-slow) var(--ds-ease-in-out);
-}
-.dock-resizer:hover::before,
-.notes-dock.resize-dragging .dock-resizer::before {
-  opacity: 1;
-  background: var(--dsw-alias-button-floating-hover);
-  border-color: var(--dsw-alias-border-l3);
 }
 .notes-dock.resize-dragging { user-select: none; -webkit-user-select: none; cursor: col-resize; }
 .notes-dock.collapsed .dock-resizer { display: none; }
@@ -1614,7 +1581,7 @@ button.ds-leading { cursor: pointer; }
   <button class="x" id="hintClose">✕</button>
   <b>dsh-notes 融合原型（v0.4）</b><br/>
   · 竖栏占据<b>上边栏之下</b>的整列高度（不覆盖顶部栏）：<b>上 = 常驻会话卡片，下 = 小计</b>（标题同款样式）<br/>
-  · 中间分隔条（平时简洁、悬停/拖拽时强调）调整上下比例（双击复位 46%），折叠/比例均持久化<br/>
+  · 中间分隔条（明显的分割细线，本身即拖拽把手；原生样式仅指针变化）调整上下比例（双击复位 46%），折叠/比例均持久化<br/>
   · 竖栏<b>右边缘拖拽调整宽度</b>（220–480，持久化）<br/>
   · 上半卡片：直接对话（发送/停止/流式）、⚙ 预设/模型/思考等级、清空会话（归档+新建）；**简化显示：只渲染用户输入 / 模型输出 / 回合错误**（上下文注入、思考、工具调用行隐藏）<br/>
   · 下半小计：全局/工作区 tab、待办（勾选/编辑/置顶/拖拽/撤销/清空）、随记自动保存<br/>

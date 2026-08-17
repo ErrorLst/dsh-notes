@@ -502,37 +502,25 @@ button.ds-leading { cursor: pointer; }
   font-size: 11px;
 }
 
-/* ===== 分隔条（官方 AppFrame handle 同款：透明热区 + 悬停浮现悬浮胶囊） ===== */
+/* ===== 分隔条（明显的分割细线，本身即拖拽把手；拖拽样式 = DSH 原生：无特殊样式，仅指针变化） ===== */
 .dock-splitter {
   flex: none;
-  height: 12px;
+  height: 9px;
   display: flex;
   align-items: center;
-  justify-content: center;
   cursor: row-resize;
   z-index: 5;
   touch-action: none;
 }
 .dock-splitter::before {
   content: '';
-  box-sizing: border-box;
-  background: var(--dsw-alias-button-floating-fill);
-  border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
-  opacity: 0;
-  width: 32px;
-  height: 12px;
-  border-radius: 10px;
-  transition: opacity var(--ds-transition-duration-slow, 0.2s) var(--ds-ease-in-out), background var(--ds-transition-duration-slow, 0.2s) var(--ds-ease-in-out);
-}
-.dock-splitter:hover::before,
-.dsh-notes-dock.split-dragging .dock-splitter::before {
-  opacity: 1;
-  background: var(--dsw-alias-button-floating-hover);
-  border-color: var(--dsw-alias-border-l3);
+  width: 100%;
+  height: 1px;
+  background: var(--dsw-alias-border-l2);
 }
 .dsh-notes-dock.split-dragging { user-select: none; -webkit-user-select: none; cursor: row-resize; }
 
-/* ===== 右缘宽度拖拽（官方 AppFrame handle 同款：8px 热区 + 悬停浮现竖胶囊） ===== */
+/* ===== 右缘宽度拖拽（DSH 原生样式：不可见热区，仅指针变化） ===== */
 .dock-resizer {
   position: absolute;
   top: 0;
@@ -542,27 +530,6 @@ button.ds-leading { cursor: pointer; }
   cursor: col-resize;
   touch-action: none;
   z-index: 6;
-}
-.dock-resizer::before {
-  content: '';
-  box-sizing: border-box;
-  background: var(--dsw-alias-button-floating-fill);
-  border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
-  opacity: 0;
-  width: 12px;
-  height: 32px;
-  border-radius: 10px;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  transition: opacity var(--ds-transition-duration-slow, 0.2s) var(--ds-ease-in-out), background var(--ds-transition-duration-slow, 0.2s) var(--ds-ease-in-out);
-}
-.dock-resizer:hover::before,
-.dsh-notes-dock.resize-dragging .dock-resizer::before {
-  opacity: 1;
-  background: var(--dsw-alias-button-floating-hover);
-  border-color: var(--dsw-alias-border-l3);
 }
 .dsh-notes-dock.resize-dragging { user-select: none; -webkit-user-select: none; cursor: col-resize; }
 .dsh-notes-dock.collapsed .dock-resizer { display: none; }
