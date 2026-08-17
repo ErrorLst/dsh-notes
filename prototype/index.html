@@ -934,7 +934,7 @@ body.rail .foot-quota .rail-only { display: inline; }
 .sc-popup-foot button:hover { opacity: 0.9; }
 
 /* ==========================================================================
-   分隔条（明显分割标记：整条底色 + 抓握手柄，拖拽调整上下比例）
+   分隔条（平时简洁：透明底 + 短浅手柄；hover/拖拽时强调：底色条 + 品牌手柄）
    ========================================================================== */
 .dock-splitter {
   flex: none;
@@ -945,28 +945,32 @@ body.rail .foot-quota .rail-only { display: inline; }
   cursor: row-resize;
   z-index: 5;
   touch-action: none;
-  background: var(--dsw-alias-bg-overlay);
-  border-top: 1px solid var(--dsw-alias-border-l2);
-  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  background: transparent;
+  border-top: 1px solid transparent;
+  border-bottom: 1px solid transparent;
   transition: background var(--ds-transition-duration-fast) var(--ds-ease-in-out);
 }
-/* 抓握手柄（居中短条） */
+/* 抓握手柄（居中短条，平时低透明） */
 .dock-splitter::before {
   content: '';
-  width: 40px;
-  height: 4px;
+  width: 24px;
+  height: 3px;
   border-radius: 2px;
   background: var(--dsw-alias-border-l3);
-  transition: background var(--ds-transition-duration-fast) var(--ds-ease-in-out), width var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+  opacity: 0.45;
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-in-out), width var(--ds-transition-duration-fast) var(--ds-ease-in-out), opacity var(--ds-transition-duration-fast) var(--ds-ease-in-out);
 }
 .dock-splitter:hover,
 .notes-dock.split-dragging .dock-splitter {
-  background: var(--dsw-alias-interactive-bg-hover-accent);
+  background: var(--dsw-alias-bg-overlay);
+  border-top-color: var(--dsw-alias-border-l2);
+  border-bottom-color: var(--dsw-alias-border-l2);
 }
 .dock-splitter:hover::before,
 .notes-dock.split-dragging .dock-splitter::before {
   background: var(--dsw-alias-state-business-primary);
   width: 56px;
+  opacity: 1;
 }
 .notes-dock.split-dragging { user-select: none; -webkit-user-select: none; cursor: row-resize; }
 
@@ -1548,7 +1552,7 @@ body.rail .foot-quota .rail-only { display: inline; }
   <button class="x" id="hintClose">✕</button>
   <b>dsh-notes 融合原型（v0.4）</b><br/>
   · 竖栏占据<b>上边栏之下</b>的整列高度（不覆盖顶部栏）：<b>上 = 常驻会话卡片，下 = 小计</b>（标题同款样式）<br/>
-  · 中间分隔条（带底色与手柄）拖拽调整上下比例（双击复位 46%），折叠/比例均持久化<br/>
+  · 中间分隔条（平时简洁、悬停/拖拽时强调）调整上下比例（双击复位 46%），折叠/比例均持久化<br/>
   · 竖栏<b>右边缘拖拽调整宽度</b>（220–480，持久化）<br/>
   · 上半卡片：直接对话（发送/停止/流式）、⚙ 预设/模型/思考等级、清空会话（归档+新建）<br/>
   · 下半小计：全局/工作区 tab、待办（勾选/编辑/置顶/拖拽/撤销/清空）、随记自动保存<br/>

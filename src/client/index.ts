@@ -423,7 +423,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   font-size: 11px;
 }
 
-/* ===== 分隔条（明显分割标记：底色条 + 抓握手柄） ===== */
+/* ===== 分隔条（平时简洁：透明底 + 短浅手柄；hover/拖拽时强调：底色条 + 品牌手柄） ===== */
 .dock-splitter {
   flex: none;
   height: 12px;
@@ -433,27 +433,31 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   cursor: row-resize;
   z-index: 5;
   touch-action: none;
-  background: var(--dsw-alias-bg-overlay);
-  border-top: 1px solid var(--dsw-alias-border-l2);
-  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  background: transparent;
+  border-top: 1px solid transparent;
+  border-bottom: 1px solid transparent;
   transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
 }
 .dock-splitter::before {
   content: '';
-  width: 40px;
-  height: 4px;
+  width: 24px;
+  height: 3px;
   border-radius: 2px;
   background: var(--dsw-alias-border-l3);
-  transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), width var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
+  opacity: 0.45;
+  transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), width var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), opacity var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
 }
 .dock-splitter:hover,
 .dsh-notes-dock.split-dragging .dock-splitter {
-  background: var(--dsw-alias-interactive-bg-hover-accent);
+  background: var(--dsw-alias-bg-overlay);
+  border-top-color: var(--dsw-alias-border-l2);
+  border-bottom-color: var(--dsw-alias-border-l2);
 }
 .dock-splitter:hover::before,
 .dsh-notes-dock.split-dragging .dock-splitter::before {
   background: var(--dsw-alias-state-business-primary);
   width: 56px;
+  opacity: 1;
 }
 .dsh-notes-dock.split-dragging { user-select: none; -webkit-user-select: none; cursor: row-resize; }
 
