@@ -3,6 +3,7 @@
 > 版本：0.4 · 状态：**已实现（M1 融合完成 + transcript 分级折叠，待重启 DSH 后验收）** · 关联原型：`prototype/index.html`
 >
 > 变更记录：
+> 0.4.14 —— 卡片模型输出支持 **Markdown 渲染**：复用官方 `dsh-client-ui-primitives` 的 `MarkdownText`（GFM + TeX 数学 + 安全链接 + 流式增量渲染，代码块带复制按钮）；加载失败降级纯文本。原型加精简 md 演示渲染器。
 > 0.4.13 —— **修复回复内容重复显示**：同一输出被推了两次——流式块收尾（`block-end`/冲刷）先落一行，随后 `assistant/message` 最终事件又落一行。修复：按 `turn:step` 记录流式收尾行，`assistant/message` 落地时先移除同 step 的流式行再推最终行（与官方会话「partial 被最终消息替换」一致）；工具行改按 `callId` 去重（流式块与 `tool/call` 事件共用一行）。
 > 0.4.12 —— **修复清空会话后旧内容回灌**：`ensureResident()` 单飞缓存未失效——清空后创建的新会话 B 不被轮询使用，`scard-chat-state` 仍解析到旧会话 A 的 transcript（UI 先清空、轮询又把旧消息灌回）。修复：`scard-clear` / `scard-select-cwd` 重建分支置 `residentPromise = null`，下次轮询重新读状态文件解析新会话。清空效果与归档一致（旧会话归档隐藏，卡片落到新空白会话）。
 > 0.4.11 —— 分隔条改为**明显的分割细线**（全宽 1px `border-l2`，9px 热区本身即拖拽把手）；拖拽样式对齐 **DSH 原生**（无悬浮胶囊/底色/手柄，仅 `row-resize`/`col-resize` 指针变化；右缘宽度拖拽同改）。
@@ -46,7 +47,7 @@ dsh-notes 在 DSH Web 界面中提供**侧栏与对话区之间的常驻竖栏**
 | 定位机制 | 与 v0.3 一致：`shell.overlay` 常驻条目 + `position: absolute` 浮层（定位上下文 = overlay 层，`inset: 0` 覆盖整个 AppFrame），不参与布局；`left` = AppFrame 网格第一列（侧栏列）实测宽度（向上找 grid 帧解析 `gridTemplateColumns`，MutationObserver 跟随折叠/拖拽）；`top: 0; bottom: 0`、`pointer-events: auto` |
 | —— 会话卡片（上半） —— | |
 | 常驻会话 | 插件专属会话：激活时 `agents.create`（`meta.cwd` = 配置的工作目录，未配置/无效 → 系统临时目录 `{tmpdir}/dsh-notes-resident`），id 与 cwd 存 `~/.dsh/session-card.json`（沿用旧 dsh-session-card 路径，已建会话复用、历史保留）；进程重启后 `agents.resume` 恢复，空白会话与配置 cwd 不一致时自动重建 |
-| 卡片内直接对话 | **简化显示（v0.4.8）**：只渲染用户输入气泡 / 模型输出气泡 / 回合错误行（官方 TurnErrorItem）；上下文注入、思考、工具调用行由 Host 照常折叠（§3.8-5 不变）但客户端不再显示，随时可恢复）+ 输入发送 + 运行中可停止 |
+| 卡片内直接对话 | **简化显示（v0.4.8）**：只渲染用户输入气泡 / 模型输出气泡 / 回合错误行（官方 TurnErrorItem）；上下文注入、思考、工具调用行由 Host 照常折叠（§3.8-5 不变）但客户端不再显示，随时可恢复；**模型输出 Markdown 渲染（v0.4.14）**：官方 `MarkdownText`（GFM + TeX + 安全链接 + 流式）+ 输入发送 + 运行中可停止 |
 | 内容读取 | Host 折叠 `agent.session.events` 为**分级 transcript**（user / assistant / context / reasoning / tool 行，见 §3.8-5），客户端轮询 `chat-state`（运行中 800ms / 空闲 3s；发送后立即轮询；`lastSeq` 未变且非运行中跳过重渲染） |
 | 选择预设 | ⚙ 弹窗内 · `agentPresets` 名册；空白会话可切换（`presets.recompose` + `agent-preset/selected` 事件），已开始则锁定并提示 |
 | 选择模型 / 思考等级 | ⚙ 弹窗内 · `llm` 模型目录（provider 分组）+ 当前模型 `reasoning.efforts`（含「默认」）；经 `agent/request` 全局瀑布监听（untagged、按会话 id 过滤）覆盖 provider/model/reasoningEffort |

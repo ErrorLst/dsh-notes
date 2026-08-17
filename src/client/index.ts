@@ -22,6 +22,17 @@
 const React = require('react')
 const { useState, useEffect, useLayoutEffect, useRef, useCallback } = React
 
+/* 官方 Markdown 渲染（dsh-client-ui-primitives：GFM + TeX 数学 + 安全链接 +
+ * 流式渲染；加载失败时降级为纯文本） */
+let MarkdownText = null
+try {
+  const primitives = require('@deepseek-ai/dsh-client-ui-primitives')
+  if (primitives !== null && typeof primitives === 'object' && typeof primitives.MarkdownText === 'function') {
+    MarkdownText = primitives.MarkdownText
+  }
+} catch { /* 降级 */ }
+const MD_LABELS = { copyLabel: '复制', copiedLabel: '已复制' }
+
 const STYLE_TAG_ID = 'dsh-notes-dock-style'
 const COLLAPSED_KEY = 'dsh-notes.collapsed'
 const SPLIT_KEY = 'dsh-notes.split'
@@ -196,12 +207,15 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   border-radius: 10px 10px 3px 10px;
   padding: 5px 10px;
 }
-.sc-msg.assistant { align-self: flex-start; }
+.sc-msg.assistant { align-self: flex-start; max-width: 96%; }
 .sc-msg.assistant .bubble {
   background: var(--dsw-alias-bg-layer-2);
   border-radius: 10px 10px 10px 3px;
   padding: 5px 10px;
+  white-space: normal; /* Markdown 渲染自行处理排版 */
+  min-width: 0;
 }
+.sc-msg.assistant .bubble .sc-plain { white-space: pre-wrap; word-break: break-word; }
 .sc-msg.tool {
   align-self: center;
   font-size: 10.5px;
@@ -2042,7 +2056,11 @@ function NotesDock(props) {
       } else if (message.kind === 'assistant') {
         chatRows.push(
           React.createElement('div', { key: message.id, className: 'sc-msg assistant' },
-            React.createElement('div', { className: 'bubble' }, message.text),
+            React.createElement('div', { className: 'bubble' },
+              MarkdownText !== null
+                ? React.createElement(MarkdownText, { text: message.text, streaming: false, codeLabels: MD_LABELS })
+                : React.createElement('span', { className: 'sc-plain' }, message.text),
+            ),
           ),
         )
       } else {
@@ -2058,7 +2076,14 @@ function NotesDock(props) {
           if (!duplicate) {
             chatRows.push(
               React.createElement('div', { key: `${partial.id}-stream`, className: 'sc-msg assistant' },
-                React.createElement('div', { className: 'bubble' }, partial.text, React.createElement('span', { className: 'cursor' })),
+                React.createElement('div', { className: 'bubble' },
+                  MarkdownText !== null
+                    ? React.createElement(MarkdownText, { text: partial.text, streaming: true, codeLabels: MD_LABELS })
+                    : React.createElement(React.Fragment, null,
+                        React.createElement('span', { className: 'sc-plain' }, partial.text),
+                        React.createElement('span', { className: 'cursor' }),
+                      ),
+                ),
               ),
             )
           }

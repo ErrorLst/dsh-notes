@@ -694,12 +694,15 @@ body.rail .foot-quota .rail-only { display: inline; }
   border-radius: 10px 10px 3px 10px;
   padding: 5px 10px;
 }
-.sc-msg.assistant { align-self: flex-start; }
+.sc-msg.assistant { align-self: flex-start; max-width: 96%; }
 .sc-msg.assistant .bubble {
   background: var(--dsw-alias-bg-layer-2);
   border-radius: 10px 10px 10px 3px;
   padding: 5px 10px;
+  white-space: normal; /* Markdown 渲染自行处理排版 */
+  min-width: 0;
 }
+.sc-msg.assistant .bubble .sc-plain { white-space: pre-wrap; word-break: break-word; }
 .sc-msg.tool {
   align-self: center;
   font-size: 10.5px;
@@ -1583,7 +1586,7 @@ button.ds-leading { cursor: pointer; }
   · 竖栏占据<b>上边栏之下</b>的整列高度（不覆盖顶部栏）：<b>上 = 常驻会话卡片，下 = 小计</b>（标题同款样式）<br/>
   · 中间分隔条（明显的分割细线，本身即拖拽把手；原生样式仅指针变化）调整上下比例（双击复位 46%），折叠/比例均持久化<br/>
   · 竖栏<b>右边缘拖拽调整宽度</b>（220–480，持久化）<br/>
-  · 上半卡片：直接对话（发送/停止/流式）、⚙ 预设/模型/思考等级、清空会话（归档+新建）；**简化显示：只渲染用户输入 / 模型输出 / 回合错误**（上下文注入、思考、工具调用行隐藏）<br/>
+  · 上半卡片：直接对话（发送/停止/流式）、⚙ 预设/模型/思考等级、清空会话（归档+新建）；**简化显示：只渲染用户输入 / 模型输出 / 回合错误**（上下文注入、思考、工具调用行隐藏）；模型输出支持 **Markdown 渲染**（真实实现为官方 MarkdownText：GFM + TeX 数学 + 安全链接 + 流式）<br/>
   · 下半小计：全局/工作区 tab、待办（勾选/编辑/置顶/拖拽/撤销/清空）、随记自动保存<br/>
   · 数据存 localStorage（模拟持久化）；右上「会话：空白/已开始」切换演示预设锁定
 </div>
@@ -1630,7 +1633,7 @@ const DEFAULT_DATA = {
       { kind: 'user', text: '你好，介绍一下这个常驻会话卡片' },
       { kind: 'context', label: '工作区指令', producer: '~/.dsh/AGENTS.md', source: { kind: 'agent-instructions', form: 'instructions', baseline: true, changes: [{ path: '~/.dsh/AGENTS.md', action: 'set', digest: 'sha256:3f9a…' }] }, text: '<system-reminder> 以下工作区指令可能与你的工作相关……\n\n来源：~/.dsh/AGENTS.md\n# 用户全局说明\n## 网络代理\n本机有一个可用的本地 HTTP 代理…' },
       { kind: 'reasoning', text: '用户想了解这个常驻会话卡片的功能。我需要结合它的定位（小计竖栏上半部分的迷你会话窗口）来说明，并补充设置、清空等交互。' },
-      { kind: 'assistant', text: '这是融合在小计竖栏上半部分的迷你会话窗口，你可以直接在这里对话，并在 ⚙ 中切换预设、模型和思考等级。' },
+      { kind: 'assistant', text: '这是融合在小计竖栏上半部分的迷你会话窗口，你可以直接在这里对话，并在 **⚙** 中切换预设、模型和思考等级。\n\n支持 **Markdown** 渲染：\n- 粗体 / *斜体* / `行内代码`\n- 代码块\n\n```js\nconst dock = \'dsh-notes\'\n```\n\n[示例链接](https://example.com)' },
       { kind: 'tool', name: 'web_search', callId: 'call_01', args: '{"query":"dsh-notes 常驻会话"}', result: '未找到相关公开资料（演示数据）', isError: false, done: true },
       { kind: 'context', label: '目录', producer: 'dsh-skill', source: { kind: 'plugin', plugin: 'dsh-skill', form: 'catalog', entries: [{ name: 'skill-a', description: '示例技能 A' }, { name: 'skill-b', description: '示例技能 B' }] }, text: '' },
       { kind: 'assistant', text: '常驻会话独立于任何工作区，清空后会归档并自动新建空白会话。' },
@@ -1968,7 +1971,7 @@ function renderCardMessages() {
       html += '<div class="sc-msg user">' + esc(m.text) + '</div>'
       hasContent = true
     } else if (m.kind === 'assistant') {
-      html += '<div class="sc-msg assistant"><div class="bubble">' + esc(m.text) + (m.streaming ? '<span class="cursor"></span>' : '') + '</div></div>'
+      html += '<div class="sc-msg assistant"><div class="bubble">' + (m.streaming ? '<span class="sc-plain">' + esc(m.text) + '</span><span class="cursor"></span>' : mdHtml(m.text)) + '</div></div>'
       hasContent = true
     } else if (m.kind === 'turn-error') {
       html += '<div class="ds-turn-error" role="status">'
@@ -1986,6 +1989,51 @@ function renderCardMessages() {
 }
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+/* 精简 Markdown 演示渲染（真实实现 = 官方 MarkdownText：GFM + TeX 数学 + 安全链接 + 流式渲染） */
+function mdEscape(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+function mdInline(s) {
+  return mdEscape(s)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+}
+function mdHtml(text) {
+  const lines = String(text).split('\n')
+  const out = []
+  let inCode = false
+  let codeBuf = []
+  let list = []
+  const flushList = () => {
+    if (list.length > 0) { out.push('<ul>' + list.map((li) => '<li>' + li + '</li>').join('') + '</ul>'); list = [] }
+  }
+  for (const raw of lines) {
+    if (/^```/.test(raw)) {
+      if (inCode) { out.push('<pre><code>' + mdEscape(codeBuf.join('\n')) + '</code></pre>'); codeBuf = []; inCode = false }
+      else { flushList(); inCode = true }
+      continue
+    }
+    if (inCode) { codeBuf.push(raw); continue }
+    if (/^#{1,4}\s/.test(raw)) {
+      flushList()
+      const m = /^(#{1,4})\s+(.*)$/.exec(raw)
+      out.push('<h' + m[1].length + '>' + mdInline(m[2]) + '</h' + m[1].length + '>')
+      continue
+    }
+    if (/^\s*[-*]\s+/.test(raw) || /^\s*\d+\.\s+/.test(raw)) {
+      list.push(mdInline(raw.replace(/^\s*(?:[-*]|\d+\.)\s+/, '')))
+      continue
+    }
+    flushList()
+    if (raw.trim() === '') { out.push('<br/>'); continue }
+    out.push('<p>' + mdInline(raw) + '</p>')
+  }
+  if (inCode) out.push('<pre><code>' + mdEscape(codeBuf.join('\n')) + '</code></pre>')
+  flushList()
+  return out.join('')
 }
 
 function renderCardControls() {
