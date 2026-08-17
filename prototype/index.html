@@ -1596,7 +1596,7 @@ button.ds-leading { cursor: pointer; }
   · 竖栏占据<b>上边栏之下</b>的整列高度（不覆盖顶部栏）：<b>上 = 常驻会话卡片，下 = 小计</b>（标题同款样式）<br/>
   · 中间分隔条（平时简洁、悬停/拖拽时强调）调整上下比例（双击复位 46%），折叠/比例均持久化<br/>
   · 竖栏<b>右边缘拖拽调整宽度</b>（220–480，持久化）<br/>
-  · 上半卡片：直接对话（发送/停止/流式）、⚙ 预设/模型/思考等级、清空会话（归档+新建）；思考/上下文注入/工具调用为<b>官方同款折叠披露行</b>（Think 图标、代码块正文、IN/OUT 卡、运行扫描动画）<br/>
+  · 上半卡片：直接对话（发送/停止/流式）、⚙ 预设/模型/思考等级、清空会话（归档+新建）；**简化显示：只渲染用户输入 / 模型输出 / 回合错误**（上下文注入、思考、工具调用行隐藏）<br/>
   · 下半小计：全局/工作区 tab、待办（勾选/编辑/置顶/拖拽/撤销/清空）、随记自动保存<br/>
   · 数据存 localStorage（模拟持久化）；右上「会话：空白/已开始」切换演示预设锁定
 </div>
@@ -1981,64 +1981,6 @@ function renderCardMessages() {
     } else if (m.kind === 'assistant') {
       html += '<div class="sc-msg assistant"><div class="bubble">' + esc(m.text) + (m.streaming ? '<span class="cursor"></span>' : '') + '</div></div>'
       hasContent = true
-    } else if (m.kind === 'reasoning') {
-      const open = m.streaming === true || openSet[m.id] === true
-      const summary = m.streaming ? latestLineOf(m.text || '') : firstLineOf(m.text || '')
-      html += '<div class="ds-row ds-reason" data-variant="think" data-state="' + (m.streaming ? 'running' : 'ok') + '">'
-        + (m.streaming ? '<span class="ds-vhidden">运行中</span>' : '')
-        + '<div class="ds-head" data-disclosure-row data-expandable role="button" tabindex="0" aria-expanded="' + open + '" data-id="' + m.id + '"' + (m.streaming ? ' data-streaming' : '') + '>'
-        + (open
-            ? '<span class="ds-leading"><span class="ds-chev">' + ICON_CHEVRON_DOWN + '</span></span>'
-            : '<span class="ds-leading"><span class="ds-icon">' + ICON_THINK + '</span><span class="ds-chev">' + ICON_CHEVRON_DOWN + '</span></span>')
-        + '<span class="ds-title">Think</span>'
-        + (open ? '' : '<span class="ds-sep" aria-hidden="true"></span><span class="ds-summary"' + (m.streaming ? ' data-follow-end' : '') + '>' + esc(summary) + '</span>')
-        + '</div>'
-        + (open ? '<div class="ds-thinkBody">' + esc(m.text || '') + '</div>' : '')
-        + '</div>'
-      hasContent = true
-    } else if (m.kind === 'context') {
-      const open = openSet[m.id] === true
-      const form = m.source && ['instructions', 'catalog', 'snapshot', 'notice', 'relay', 'recall'].indexOf(m.source.form) >= 0 ? m.source.form : undefined
-      html += '<div class="ds-row ds-context"' + (open ? ' data-open' : '') + '>'
-        + '<div class="ds-head" data-disclosure-row data-expandable role="button" tabindex="0" aria-expanded="' + open + '" data-id="' + m.id + '">'
-        + (open
-            ? '<span class="ds-leading"><span class="ds-chev">' + ICON_CHEVRON_DOWN + '</span></span>'
-            : '<span class="ds-leading"><span class="ds-icon">' + ICON_BROWSE + '</span><span class="ds-chev">' + ICON_CHEVRON_DOWN + '</span></span>')
-        + '<span class="ds-title">' + esc(m.label || '上下文注入') + '</span>'
-        + (m.producer ? '<span class="ds-sep" aria-hidden="true"></span><span class="ds-source" data-context-source>' + esc(m.producer) + '</span>' : '')
-        + (m.summary ? '<span class="ds-sep" aria-hidden="true"></span><span class="ds-summary" data-context-summary>' + esc(m.summary) + '</span>' : '')
-        + '</div>'
-        + (open ? '<div class="ds-body" data-context-injection-body' + (form ? ' data-context-form="' + form + '"' : '') + '>' + contextBodyHtml(m) + '</div>' : '')
-        + '</div>'
-      hasContent = true
-    } else if (m.kind === 'tool') {
-      const model = toolRowModel(m)
-      const open = (m.streaming === true || openSet[m.id] === true) && (model.body !== null || model.output !== null)
-      const statusText = model.state === 'running' ? '运行中' : model.state === 'error' ? '失败' : model.state === 'stopped' ? '已停止' : null
-      const summaryText = model.errorSummary !== null ? model.errorSummary : model.summary
-      const leading = model.state === 'error' || model.state === 'stopped'
-        ? '<span class="ds-leading"><span class="ds-icon"><span class="ds-dot" data-state="' + (model.state === 'error' ? 'error' : 'warning') + '"></span></span><span class="ds-chev">' + ICON_CHEVRON_DOWN + '</span></span>'
-        : (open
-            ? '<span class="ds-leading"><span class="ds-chev">' + ICON_CHEVRON_DOWN + '</span></span>'
-            : '<span class="ds-leading"><span class="ds-icon">' + VARIANT_ICONS[model.variant] + '</span><span class="ds-chev">' + ICON_CHEVRON_DOWN + '</span></span>')
-      html += '<div class="ds-row ds-tool" data-variant="' + model.variant + '" data-tool="' + esc(m.name || '') + '" data-state="' + model.state + '">'
-        + (statusText ? '<span class="ds-vhidden">' + statusText + '</span>' : '')
-        + '<div class="ds-head" data-disclosure-row data-expandable role="button" tabindex="0" aria-expanded="' + open + '" data-id="' + m.id + '"' + (m.streaming ? ' data-streaming' : '') + '>'
-        + leading
-        + '<span class="ds-title">' + esc(model.title) + '</span>'
-        + (summaryText !== '' ? '<span class="ds-sep" aria-hidden="true"></span><span class="ds-summary' + (model.errorSummary !== null ? ' ds-errorSummary' : '') + '">' + esc(summaryText) + '</span>' : '')
-        + '</div>'
-        + (open ? '<div class="ds-bodyWrap">'
-            + ((model.body !== null || model.output !== null)
-              ? '<div class="ds-ioCard">'
-                  + (model.body !== null ? '<div class="ds-ioSection"><span class="ds-ioLabel">IN</span><span class="ds-ioText">' + esc(model.body) + '</span></div>' : '')
-                  + (model.body !== null && model.output !== null ? '<span class="ds-ioDivider" aria-hidden="true"></span>' : '')
-                  + (model.output !== null ? '<div class="ds-ioSection"><span class="ds-ioLabel">OUT</span><span class="ds-ioText"' + (model.state === 'error' ? ' data-error' : '') + '>' + esc(model.output) + '</span></div>' : '')
-                + '</div>'
-              : '')
-          + '</div>' : '')
-        + '</div>'
-      hasContent = true
     } else if (m.kind === 'turn-error') {
       html += '<div class="ds-turn-error" role="status">'
         + '<span class="ds-dot ds-turn-error-dot" data-state="error"></span>'
@@ -2047,6 +1989,7 @@ function renderCardMessages() {
         + '</div>'
       hasContent = true
     }
+    // 简化显示：上下文注入 / 思考 / 工具调用行（host 仍折叠）不渲染
   }
   if (!hasContent) html = '<div class="sc-empty">常驻会话 · 直接在这里对话</div>'
   el.innerHTML = html

@@ -2008,12 +2008,10 @@ function NotesDock(props) {
     )
   }
 
-  /* ---- 会话卡片：消息列表（user/assistant 气泡 + 官方同款思考/上下文/工具披露行） ---- */
+  /* ---- 会话卡片：消息列表（简化显示：只渲染用户输入 / 模型输出 / 回合错误；
+       上下文注入、思考、工具调用行由 Host 折叠但不再显示，随时可恢复） ---- */
   function rowElement(row, streaming) {
     const key = streaming === true ? `${row.id}-live` : row.id
-    if (row.kind === 'reasoning') return React.createElement(ScReasoning, { key, row, streaming: streaming === true })
-    if (row.kind === 'context') return React.createElement(ScContext, { key, row })
-    if (row.kind === 'tool') return React.createElement(ScTool, { key, row, streaming: streaming === true })
     if (row.kind === 'turn-error') {
       return React.createElement(
         'div',

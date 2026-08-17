@@ -3,6 +3,7 @@
 > 版本：0.4 · 状态：**已实现（M1 融合完成 + transcript 分级折叠，待重启 DSH 后验收）** · 关联原型：`prototype/index.html`
 >
 > 变更记录：
+> 0.4.8 —— 卡片**简化显示**：只渲染用户输入 / 模型输出 / 回合错误；上下文注入、思考、工具调用行由 Host 照常折叠但客户端不再渲染（随时可恢复）。
 > 0.4.7 —— 回合错误可见化（官方 TurnErrorItem）：`turn/end` 携带 `reason.kind === 'error'` 时折叠为 **turn-error 行**（红点 + 「本轮运行失败」 + 错误信息 + 错误码），模型 429 等失败不再被吞掉。
 > 0.4.6 —— 披露行/拖拽把手**对齐官方实现**：思考（ReasoningRow）、上下文注入（ContextInjectionRow+ContextBody）、工具调用（ToolRow+IN/OUT 卡）改为与 DSH 会话视图逐条对应的结构/样式/文案（DisclosureRow 骨架：16px 图标槽 + 悬停换箭头 + 24px 行高 + 14px/24px 排版；Think 首行/末行摘要 + 运行扫描动画；上下文代码块正文 max-height 141px；工具变体图标 + 状态点 + 摘要）；分隔条与右缘宽度条改官方 AppFrame handle 悬浮胶囊样式（button-floating-fill/hover）。Host 上下文行透传原始 `source`、工具行增 `callId`。
 > 0.4.5 —— 分隔条**平时简洁、悬停/拖拽时强调**：静置为透明底 + 短浅手柄（低透明），hover/拖拽切换为底色条（bg-overlay + l2 边框）+ 品牌色长手柄。
@@ -40,7 +41,7 @@ dsh-notes 在 DSH Web 界面中提供**侧栏与对话区之间的常驻竖栏**
 | 定位机制 | 与 v0.3 一致：`shell.overlay` 常驻条目 + `position: absolute` 浮层（定位上下文 = overlay 层，`inset: 0` 覆盖整个 AppFrame），不参与布局；`left` = AppFrame 网格第一列（侧栏列）实测宽度（向上找 grid 帧解析 `gridTemplateColumns`，MutationObserver 跟随折叠/拖拽）；`top: 0; bottom: 0`、`pointer-events: auto` |
 | —— 会话卡片（上半） —— | |
 | 常驻会话 | 插件专属会话：激活时 `agents.create`（无 cwd → 未分组），id 存 `~/.dsh/session-card.json`（沿用旧 dsh-session-card 路径，已建会话复用、历史保留）；进程重启后 `agents.resume` 恢复 |
-| 卡片内直接对话 | 消息列表（用户/助手气泡；**思考 / 上下文注入 / 工具调用为官方同款可折叠披露行**——DisclosureRow 骨架：16px 图标槽悬停换箭头 + 24px 行高 + 14px/24px 排版；思考行 Think 图标 + 首行/末行摘要 + 运行扫描动画；上下文行标题/生产者/摘要 + 表单化代码块正文（instructions 文件清单 / catalog 条目 / snapshot 分区 / notice 摘要 / relay 来源 / recall 计数 / opaque 源字段）；工具行变体图标 + 标题/摘要 + IN/OUT 卡 + 错误状态点）+ 输入发送 + 运行中可停止 |
+| 卡片内直接对话 | **简化显示（v0.4.8）**：只渲染用户输入气泡 / 模型输出气泡 / 回合错误行（官方 TurnErrorItem）；上下文注入、思考、工具调用行由 Host 照常折叠（§3.8-5 不变）但客户端不再显示，随时可恢复）+ 输入发送 + 运行中可停止 |
 | 内容读取 | Host 折叠 `agent.session.events` 为**分级 transcript**（user / assistant / context / reasoning / tool 行，见 §3.8-5），客户端轮询 `chat-state`（运行中 800ms / 空闲 3s；发送后立即轮询；`lastSeq` 未变且非运行中跳过重渲染） |
 | 选择预设 | ⚙ 弹窗内 · `agentPresets` 名册；空白会话可切换（`presets.recompose` + `agent-preset/selected` 事件），已开始则锁定并提示 |
 | 选择模型 / 思考等级 | ⚙ 弹窗内 · `llm` 模型目录（provider 分组）+ 当前模型 `reasoning.efforts`（含「默认」）；经 `agent/request` 全局瀑布监听（untagged、按会话 id 过滤）覆盖 provider/model/reasoningEffort |
