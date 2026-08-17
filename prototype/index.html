@@ -718,6 +718,100 @@ body.rail .foot-quota .rail-only { display: inline; }
   animation: dsh-notes-blink 0.8s step-start infinite;
 }
 @keyframes dsh-notes-blink { 50% { opacity: 0; } }
+
+/* 折叠披露行（思考 / 上下文注入 / 工具调用 —— 与 DSH 会话视图一致） */
+.sc-disc {
+  align-self: stretch;
+  width: 100%;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  overflow: hidden;
+}
+.sc-disc-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 24px;
+  padding: 3px 8px;
+  text-align: left;
+  border-radius: 7px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+  transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
+}
+.sc-disc-head:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.sc-disc-head .chev {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: var(--dsw-alias-label-tertiary);
+  transform: rotate(-90deg);
+  transition: transform var(--ds-transition-duration-fast, 0.12s) var(--ds-ease-in-out, ease);
+}
+.sc-disc.open .sc-disc-head .chev { transform: rotate(0deg); }
+.sc-disc-head .d {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.sc-disc.k-reasoning .d { background: var(--dsw-alias-state-business-primary); }
+.sc-disc.k-context .d { background: var(--dsw-alias-label-secondary); }
+.sc-disc.k-tool .d { background: var(--dsw-alias-state-warn-primary); }
+.sc-disc-head .tt {
+  min-width: 0;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sc-disc-head .sub {
+  min-width: 0;
+  flex: 1;
+  color: var(--dsw-alias-label-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sc-disc-head .st {
+  flex: none;
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
+}
+.sc-disc-head .st.run { color: var(--dsw-alias-state-business-primary); }
+.sc-disc-head .st.err { color: var(--dsw-alias-state-error-primary); }
+.sc-disc-body {
+  display: none;
+  padding: 2px 8px 7px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--dsw-alias-label-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.sc-disc.open .sc-disc-body { display: block; }
+.sc-disc.streaming .sc-disc-body { display: block; }
+.sc-disc-body.mono {
+  font-family: var(--ds-font-family-code, monospace);
+  font-size: 10.5px;
+  color: var(--dsw-alias-label-tertiary);
+}
+.sc-disc-body .res { margin-top: 6px; color: var(--dsw-alias-label-primary); }
+.sc-disc-body .res.err { color: var(--dsw-alias-state-error-primary); }
+.sc-disc-body .res-label { font-size: 10px; color: var(--dsw-alias-label-tertiary); }
+.sc-disc .cursor {
+  display: inline-block;
+  width: 5px;
+  height: 11px;
+  background: var(--dsw-alias-state-business-primary);
+  vertical-align: -2px;
+  animation: dsh-notes-blink 0.8s step-start infinite;
+}
 .sc-empty { align-self: center; margin: auto; color: var(--dsw-alias-label-tertiary); font-size: 12px; }
 
 /* 输入行 */
@@ -1436,7 +1530,7 @@ body.rail .foot-quota .rail-only { display: inline; }
 /* ======================================================================
    演示数据与状态（模拟 Host 存储域 notes v1 快照 + 卡片 RPC 折叠结果）
    ====================================================================== */
-const STORAGE_KEY = 'dsh-notes-prototype-v4'
+const STORAGE_KEY = 'dsh-notes-prototype-v5'
 
 const DEFAULT_DATA = {
   global: {
@@ -1466,10 +1560,12 @@ const DEFAULT_DATA = {
     effort: 'high',
     blank: true,
     messages: [
-      { role: 'user', text: '你好，介绍一下这个常驻会话卡片' },
-      { role: 'assistant', text: '这是融合在小计竖栏上半部分的迷你会话窗口，你可以直接在这里对话，并在 ⚙ 中切换预设、模型和思考等级。' },
-      { role: 'tool', text: '⚙ 调用工具 web_search（模拟）' },
-      { role: 'assistant', text: '常驻会话独立于任何工作区，清空后会归档并自动新建空白会话。' },
+      { kind: 'user', text: '你好，介绍一下这个常驻会话卡片' },
+      { kind: 'context', label: '工作区指令', producer: '~/.dsh/AGENTS.md', text: '<system-reminder> 以下工作区指令可能与你的工作相关……\n\n来源：~/.dsh/AGENTS.md\n# 用户全局说明\n## 网络代理\n本机有一个可用的本地 HTTP 代理…' },
+      { kind: 'reasoning', text: '用户想了解这个常驻会话卡片的功能。我需要结合它的定位（小计竖栏上半部分的迷你会话窗口）来说明，并补充设置、清空等交互。' },
+      { kind: 'assistant', text: '这是融合在小计竖栏上半部分的迷你会话窗口，你可以直接在这里对话，并在 ⚙ 中切换预设、模型和思考等级。' },
+      { kind: 'tool', name: 'web_search', args: '{"query":"dsh-notes 常驻会话"}', result: '未找到相关公开资料（演示数据）', isError: false, done: true },
+      { kind: 'assistant', text: '常驻会话独立于任何工作区，清空后会归档并自动新建空白会话。' },
     ],
   },
 }
@@ -1624,10 +1720,50 @@ function renderCardMessages() {
   const el = $('scMessages')
   let html = ''
   let hasContent = false
+  const openSet = state.cardOpen || {}
   for (const m of state.card.messages) {
-    if (m.role === 'user') { html += '<div class="sc-msg user">' + esc(m.text) + '</div>'; hasContent = true }
-    else if (m.role === 'assistant') { html += '<div class="sc-msg assistant"><div class="bubble">' + esc(m.text) + (m.streaming ? '<span class="cursor"></span>' : '') + '</div></div>'; hasContent = true }
-    else { html += '<div class="sc-msg tool">' + esc(m.text) + '</div>' }
+    if (m.kind === 'user') {
+      html += '<div class="sc-msg user">' + esc(m.text) + '</div>'
+      hasContent = true
+    } else if (m.kind === 'assistant') {
+      html += '<div class="sc-msg assistant"><div class="bubble">' + esc(m.text) + (m.streaming ? '<span class="cursor"></span>' : '') + '</div></div>'
+      hasContent = true
+    } else {
+      const open = m.streaming === true || openSet[m.id] === true
+      const kindCls = 'k-' + m.kind
+      const streamingCls = m.streaming === true ? ' streaming' : ''
+      let title = ''
+      let sub = ''
+      let status = ''
+      if (m.kind === 'reasoning') title = '思考'
+      else if (m.kind === 'context') { title = m.label || '上下文注入'; sub = m.producer || '' }
+      else if (m.kind === 'tool') {
+        title = m.name ? '工具调用 · ' + m.name : '工具调用'
+        status = m.done === true ? (m.isError ? '失败' : '完成') : (m.streaming ? '运行中' : '')
+      }
+      html += '<div class="sc-disc ' + kindCls + (open ? ' open' : '') + streamingCls + '" data-id="' + m.id + '">'
+        + '<button type="button" class="sc-disc-head" data-id="' + m.id + '"' + (m.streaming ? ' disabled' : '') + '>'
+        + '<span class="chev"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7.5L6 3.5l4 4"/></svg></span>'
+        + '<span class="d"></span>'
+        + '<span class="tt">' + esc(title) + '</span>'
+        + '<span class="sub">' + esc(sub) + '</span>'
+        + (status ? '<span class="st' + (m.isError ? ' err' : (m.streaming ? ' run' : '')) + '">' + esc(status) + '</span>' : '')
+        + '</button>'
+        + '<div class="sc-disc-body">'
+      if (m.kind === 'reasoning' || m.kind === 'context') {
+        if (m.kind === 'context' && m.summary) html += '<div class="res">' + esc(m.summary) + '</div>'
+        if (m.text) html += '<div>' + esc(m.text) + (m.streaming ? '<span class="cursor"></span>' : '') + '</div>'
+      } else if (m.kind === 'tool') {
+        html += '<div class="mono">' + esc(m.args || '(无参数)') + '</div>'
+        if (m.result) {
+          html += '<div class="res' + (m.isError ? ' err' : '') + '"><div class="res-label">' + (m.isError ? '结果（出错）' : '结果') + '</div>' + esc(m.result) + '</div>'
+        } else if (m.streaming) {
+          html += '<span class="cursor"></span>'
+        }
+      }
+      html += '</div></div>'
+      hasContent = true
+    }
   }
   if (!hasContent) html = '<div class="sc-empty">常驻会话 · 直接在这里对话</div>'
   el.innerHTML = html
@@ -1924,40 +2060,64 @@ function stopStream() {
   if (streamToken !== null) { clearTimeout(streamToken); streamToken = null }
   if (state.card.running) {
     state.card.running = false
-    const last = state.card.messages[state.card.messages.length - 1]
-    if (last && last.role === 'assistant' && last.streaming) {
-      last.streaming = false
-      if (!last.text) state.card.messages.pop()
+    for (const m of state.card.messages) {
+      if (m.streaming) {
+        m.streaming = false
+        const emptyText = (m.kind === 'assistant' || m.kind === 'reasoning') && !m.text
+        const emptyTool = m.kind === 'tool' && !m.args && !m.result
+        if (emptyText || emptyTool) m.drop = true
+      }
     }
+    state.card.messages = state.card.messages.filter((m) => !m.drop)
     renderCard()
   }
 }
 
 const FAKE_REPLY = [
   '好的，已收到你的消息。',
-  '这是一个模拟的流式回复，用于演示卡片内的实时会话效果。',
+  '这是一个模拟的流式回复：思考 → 工具调用 → 正文，演示卡片内的实时会话效果。',
   '真实实现中，消息会经 Host 折叠为 transcript 并轮询刷新。',
 ]
+const FAKE_REASONING = '用户发来了一条新消息。我需要组织一个简洁的回复，并顺带演示思考、工具调用与正文的分段流式效果。'
 
 function startFakeReply() {
-  state.card.messages.push({ role: 'tool', text: '⚙ 调用工具（模拟）' })
-  const partial = { role: 'assistant', text: '', streaming: true }
-  state.card.messages.push(partial)
+  const reason = { kind: 'reasoning', id: 'p-reason', text: '', streaming: true }
+  const tool = { kind: 'tool', id: 'p-tool', name: 'demo_tool', args: '', streaming: true }
+  const text = { kind: 'assistant', id: 'p-text', text: '', streaming: true }
+  state.card.messages.push(reason, tool, text)
   renderCardMessages()
-  const reply = FAKE_REPLY.join('')
+  const stages = [
+    { row: reason, target: FAKE_REASONING, mode: 'text' },
+    { row: tool, target: '{"query":"演示"}\n', mode: 'args' },
+    { row: tool, target: null, mode: 'result', result: 'ok（演示结果）' },
+    { row: text, target: FAKE_REPLY.join(''), mode: 'text' },
+  ]
+  let stage = 0
   let i = 0
   streamTimer = setInterval(() => {
-    i += 2
-    partial.text = reply.slice(0, i)
-    renderCardMessages()
-    if (i >= reply.length) {
+    const s = stages[stage]
+    if (!s) {
       clearInterval(streamTimer); streamTimer = null
-      partial.streaming = false
       state.card.running = false
       renderCard()
       toastMsg('回复完成')
+      return
     }
-  }, 120)
+    if (s.mode === 'result') {
+      s.row.streaming = false
+      s.row.done = true
+      s.row.result = s.result
+      stage += 1
+      i = 0
+      renderCardMessages()
+      return
+    }
+    i += 2
+    if (s.mode === 'args') s.row.args = s.target.slice(0, i)
+    else s.row.text = s.target.slice(0, i)
+    renderCardMessages()
+    if (i >= s.target.length) { stage += 1; i = 0 }
+  }, 100)
 }
 
 $('scSend').addEventListener('click', () => {
@@ -1965,13 +2125,22 @@ $('scSend').addEventListener('click', () => {
   const text = $('scInput').value.trim()
   if (!text) return
   $('scInput').value = ''
-  state.card.messages.push({ role: 'user', text })
+  state.card.messages.push({ kind: 'user', text })
   state.card.running = true
   renderCard()
   streamToken = setTimeout(startFakeReply, 500)
 })
 $('scInput').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('scSend').click() }
+})
+/* 折叠披露行：点击头部切换展开 */
+$('scMessages').addEventListener('click', (e) => {
+  const head = e.target.closest('.sc-disc-head')
+  if (!head || head.disabled) return
+  const id = head.dataset.id
+  if (!state.cardOpen) state.cardOpen = {}
+  state.cardOpen[id] = !(state.cardOpen[id] === true)
+  renderCardMessages()
 })
 
 /* 清空（归档 + 新建） */

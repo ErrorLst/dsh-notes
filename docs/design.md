@@ -1,8 +1,9 @@
 # dsh-notes 设计文档
 
-> 版本：0.4 · 状态：**已实现（M1 融合完成，待重启 DSH 后验收）** · 关联原型：`prototype/index.html`
+> 版本：0.4 · 状态：**已实现（M1 融合完成 + transcript 分级折叠，待重启 DSH 后验收）** · 关联原型：`prototype/index.html`
 >
 > 变更记录：
+> 0.4.3 —— transcript 分级折叠（对齐 DSH 会话视图）：`user/message` 按 `source` 区分人类输入与**注入上下文**（工作区指令/目录/快照/通知/跨会话召回，按 dsh-client-runtime `contextProvenance` 规则投影标题与生产者）；`assistant/message` 的 reasoning 块与 `tool/call`+`tool/result` 成卡；客户端渲染为**可折叠披露行**（思考/上下文注入/工具调用），流式 partial 按块类型实时展开（提交 `6f825a0`，客户端版本标记 `data-notes-ver="6f825a0"`）。
 > 0.4.2 —— 融合实现落地（src 双 half）：Host 增 scard-* 动作 + 常驻会话管理 + agent/request 模型覆盖 + transcript 折叠；Client 改全高双分区（上卡片/分隔条/下小计），顶栏之下定位（提交 `9ce1cfb`，客户端版本标记 `data-notes-ver="2bc8a83"`）。
 > 0.4.1 —— 评审修正：竖栏为**「上边栏之下」的全高**（从 DSH 顶部栏下缘到页面底部，不覆盖上边栏）；上下两部分之间的**分隔条明显化**（整条底色 + 抓握手柄）。
 > 0.4 —— **融合 dsh-session-card**：dock 改为**全高**，上半部分为**常驻会话卡片**、下半部分为小计（上下可拖拽调比例）；会话卡片 RPC 并入 `/api/dsh-notes` HTTP 通道；scard-1 动态插件源码不在本会话（inspect 为空），Host 侧按旧 dsh-session-card `design.md`/`research.md` 契约重新实现；常驻会话状态文件沿用 `~/.dsh/session-card.json`，已建会话无缝延续。
@@ -34,8 +35,8 @@ dsh-notes 在 DSH Web 界面中提供**侧栏与对话区之间的常驻竖栏**
 | 定位机制 | 与 v0.3 一致：`shell.overlay` 常驻条目 + `position: absolute` 浮层（定位上下文 = overlay 层，`inset: 0` 覆盖整个 AppFrame），不参与布局；`left` = AppFrame 网格第一列（侧栏列）实测宽度（向上找 grid 帧解析 `gridTemplateColumns`，MutationObserver 跟随折叠/拖拽）；`top: 0; bottom: 0`、`pointer-events: auto` |
 | —— 会话卡片（上半） —— | |
 | 常驻会话 | 插件专属会话：激活时 `agents.create`（无 cwd → 未分组），id 存 `~/.dsh/session-card.json`（沿用旧 dsh-session-card 路径，已建会话复用、历史保留）；进程重启后 `agents.resume` 恢复 |
-| 卡片内直接对话 | 消息列表（用户/助手气泡、工具活动行）+ 输入发送 + 运行中可停止 + 流式 partial 光标；发送走客户端 `sessions.binding(id).session.prompt(text, 'queue')`（与 composer 同路径，冷会话自动恢复 agent） |
-| 内容读取 | Host 折叠 `agent.session.events` 为紧凑 transcript，客户端轮询 `chat-state`（运行中 800ms / 空闲 3s；发送后立即轮询；`lastSeq` 未变且非运行中跳过重渲染） |
+| 卡片内直接对话 | 消息列表（用户/助手气泡；**思考 / 上下文注入 / 工具调用为独立可折叠披露行**，与 DSH 会话视图一致——折叠头部：类型点 + 标题 + 生产者/状态，展开见正文/参数/结果；流式时自动展开并带光标）+ 输入发送 + 运行中可停止 |
+| 内容读取 | Host 折叠 `agent.session.events` 为**分级 transcript**（user / assistant / context / reasoning / tool 行，见 §3.8-5），客户端轮询 `chat-state`（运行中 800ms / 空闲 3s；发送后立即轮询；`lastSeq` 未变且非运行中跳过重渲染） |
 | 选择预设 | ⚙ 弹窗内 · `agentPresets` 名册；空白会话可切换（`presets.recompose` + `agent-preset/selected` 事件），已开始则锁定并提示 |
 | 选择模型 / 思考等级 | ⚙ 弹窗内 · `llm` 模型目录（provider 分组）+ 当前模型 `reasoning.efforts`（含「默认」）；经 `agent/request` 全局瀑布监听（untagged、按会话 id 过滤）覆盖 provider/model/reasoningEffort |
 | 清空会话 | 两段式确认；`workspaceRegistry.archiveSession` 归档 + 新建空白常驻会话（运行中拒绝）；客户端不自动导航 |
@@ -162,7 +163,12 @@ const title       = useWorkspaces((s) => s.items.find((w) => w.workspaceId === w
    - untagged 监听器全局收听所有 agent 作用域分发（`dsh-scope` scopeTarget：`tag === undefined → true`）；apiproxy 的模型选择监听器对常驻会话是**惰性安装**（首次 `session.models`/`session.selectModel` RPC）→ 本插件激活时注册的监听器在外层，返回值最终生效；其他会话按 id 放行，零影响。
    - 设置：`llm.resolveCallConfig({provider, model, …reasoningEffort})` 校验 → 写入 override map → 尽力 `agentDefaultModel.saveSelection`（失败仅 warn）。
 4. **清空会话**：无内建清空 API → `workspaceRegistry.archiveSession(residentId)`（registry 全局归档，未分组会话适用）→ 新建常驻会话（§3.7 agents.create）→ 状态文件更新 → 删 override 旧条目。运行中拒绝。
-5. **transcript 折叠（chat-state）**：从 `agent.session.events` 折叠：`user/message` → user 行（text 块拼接）；`assistant/message` → assistant 行（跳过 tool-call 块）；`assistant/chunk`（block-start/text-delta/block-end）累计当前 open step 的 partial（`step/start` 打开 / `step/end` 或新 `turn/start` 关闭）；`running` = 最近 `turn/start` 无配对 `turn/end`；`lastSeq` = 最后事件 seq；只返回最近 N 条（200）叶字段。监听 `session/event`（untagged）过滤 `session.id === residentId` 仅递增 revision。
+5. **transcript 分级折叠（chat-state，v0.4.3）**：从 `agent.session.events` 折叠为行序列（只返回最近 200 行，叶字段 JSON）：
+   - `user/message`：`data.source.kind === 'user'` → **user 行**（text 块拼接）；否则为**注入上下文 → context 行**（`label` = 表单中文名：instructions→工作区指令 / catalog→目录 / snapshot→快照 / notice→通知 / relay→转达 / recall→跨会话召回，未知 → 上下文注入；`producer` 按 dsh-client-runtime `contextProvenance` 规则投影：`agent-instructions` 取 `changes[].path`、`plugin` 取 `plugin`、`skill-invocation` 取 `name`、`session-reference` 取 `references[].label`；`form === 'notice'` 时附 `summary`）；`kind === 'tool'` 跳过（由 tool/result 成卡）。
+   - `assistant/message`：按 content 块拆分——`text` 块 → **assistant 行**，`reasoning` 块 → **reasoning 行**（思考），`tool-call` 块跳过（避免与 tool/call 事件重复成卡）。
+   - `assistant/chunk`：按 `blockType`（text / reasoning / tool-call）分块累计流式 partial（`block-start` 开块、`text-delta` / `reasoning-delta` / `tool-call-delta` 累积、`block-end` 落行）；`step/end` / `turn/end` 冲刷未收尾块为行；仍在流中的块以 `partials[]` 上报（客户端自动展开 + 光标）。
+   - `tool/call` + `tool/result`：按 `callId` 配对成 **tool 行**（名称 + 原始参数 JSON + 结果文本 + 错误标记）；result 缺失时保持「运行中」。
+   - `running` = 最近 `turn/start` 无配对 `turn/end`；`lastSeq` = 最后事件 seq。监听 `session/event`（untagged）过滤 `session.id === residentId` 仅递增 revision。
 6. **卡片内发送/停止（客户端）**：`ctx.sessions.binding(residentId)`（纯解析，任何已列出会话惰性创建 scope+binding，无需先在中间栏打开）；`binding.session.prompt([{type:'text', text}], 'queue')` / `cancel()`（wire RPC，冷会话 host 侧自动恢复 agent，与 composer 同路径）；失败返回 `RpcResult`，消息不乐观上屏、行内展示 `error.message`。非当前会话无实时事件流（窗口只在会话成为「当前」时打开）→ 内容一律走轮询，不用 subscribe。
 7. **`sessions.binding(id)` 返回 undefined（会话尚未列入列表）**：短暂重试（列表拉取后即解析）；仍失败显示「会话不可用」。
 
@@ -272,7 +278,7 @@ DomainSpec {
 | `scard-select-preset` | `presetId` | `{presetId}` 或 `{error: {code, message}}`（locked / unknown / invalid / not-attached） |
 | `scard-select-model` | `provider`, `model`, `effort?` | `{selected: {provider, model, effort?}}` 或 `{error}` |
 | `scard-clear` | — | `{sessionId}` 或 `{error}`（running） |
-| `scard-chat-state` | — | `{scard: {sessionId, lastSeq, running, partial: string\|null, messages: [{id, role: 'user'\|'assistant'\|'tool', text}]}}` 或 `{scard: {cold: true}}` |
+| `scard-chat-state` | — | `{scard: {sessionId, lastSeq, running, partials: [{kind: 'assistant'\|'reasoning'\|'tool', …}], messages: [{kind: 'user'\|'assistant'\|'context'\|'reasoning'\|'tool', …}]}}` 或 `{scard: {cold: true}}`（行字段见 §3.8-5） |
 
 - 小计动作错误：`scope: 'global'` 时 `workspaceId` 必须缺省；`scope: 'workspace'` 时 `workspaceId` 必填；否则 `bad-args`。成功返回 `{ok: true, state: <快照>}`；存储域不可用 `{ok: false, error: 'storage-unavailable'}`；`undo-delete` 无记录 404。
 - 卡片动作错误：返回 `{ok: false, error: {code, message}}`（HTTP 400）或 `{ok: false, error: 'scard-unavailable'}`（必要服务缺失）；`scard-chat-state` 轮询失败时客户端保留旧内容、下次重试。

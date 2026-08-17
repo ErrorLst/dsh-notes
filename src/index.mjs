@@ -613,9 +613,95 @@ function setupScard(ctx) {
     return out
   }
 
+  /* ---- 消息来源投影（对齐 dsh-client-runtime contextProvenance，纯 JSON） ----
+   * user/message 的 source 区分直接人类输入（{kind:'user'}）与注入上下文
+   * （agent-instructions / plugin / skill-invocation / session-reference 等，
+   * 可合并扩展）。上下文行的标题/生产者按 provenance 规则推导。 */
+  const CONTEXT_FORM_LABELS = {
+    instructions: '工作区指令',
+    catalog: '目录',
+    snapshot: '快照',
+    notice: '通知',
+    relay: '转达',
+    recall: '跨会话召回',
+  }
+
+  function recordOf(source) {
+    return source !== null && typeof source === 'object' ? source : null
+  }
+
+  function stringOf(value) {
+    return typeof value === 'string' && value !== '' ? value : null
+  }
+
+  function collectStrings(record, key, subKey) {
+    const list = Array.isArray(record[key]) ? record[key] : null
+    if (list === null) return null
+    const out = []
+    for (const item of list) {
+      if (item !== null && typeof item === 'object' && stringOf(item[subKey]) !== null) {
+        out.push(item[subKey])
+      } else if (subKey === undefined && stringOf(item) !== null) {
+        out.push(item)
+      }
+    }
+    return out.length > 0 ? out : null
+  }
+
+  function contextProvenanceOf(source) {
+    const record = recordOf(source)
+    const kind = record === null ? null : stringOf(record.kind)
+    if (kind === null) return { role: 'inject', label: null }
+    switch (kind) {
+      case 'session-reference': {
+        const labels = collectStrings(record, 'references', 'label')
+        return { role: 'recall', label: labels !== null ? labels.join('、') : null }
+      }
+      case 'agent-instructions': {
+        const paths = collectStrings(record, 'changes', 'path')
+        return { role: 'inject', label: paths !== null ? paths.join('、') : null }
+      }
+      case 'plugin':
+        return { role: 'inject', label: stringOf(record.plugin) ?? null }
+      case 'skill-invocation':
+        return { role: 'inject', label: stringOf(record.name) ?? null }
+      default:
+        return { role: 'inject', label: null }
+    }
+  }
+
+  function contextFormOf(source) {
+    const record = recordOf(source)
+    const form = record === null ? null : stringOf(record.form)
+    return form !== null && Object.prototype.hasOwnProperty.call(CONTEXT_FORM_LABELS, form) ? form : null
+  }
+
+  function resultTextOf(data) {
+    // tool/result: message.content = [ToolResultBlock { type:'tool-result', toolCallId, content, isError }]
+    const content = Array.isArray(data?.message?.content) ? data.message.content : null
+    const block = content !== null && content.length > 0 ? content[0] : null
+    if (block === null || block.type !== 'tool-result') return ''
+    return textOfBlocks(block.content)
+  }
+
+  function flushPartials(partials, messages) {
+    const done = []
+    for (const p of partials.values()) {
+      if (p.kind === 'text' && p.text !== '') messages.push({ kind: 'assistant', id: p.id, text: p.text })
+      else if (p.kind === 'reasoning' && p.text !== '') messages.push({ kind: 'reasoning', id: p.id, text: p.text })
+      else if (p.kind === 'tool-call' && (p.name !== '' || p.args !== '')) {
+        messages.push({ kind: 'tool', id: p.id, name: p.name, args: p.args, result: null, isError: false, done: false })
+      }
+      done.push(p.id)
+    }
+    partials.clear()
+    return done
+  }
+
   function foldTranscript(session) {
     const messages = []
-    let partial = null
+    const toolById = new Map() // callId -> 消息数组下标（流式工具卡也可能入 partials，不动此表）
+    const partials = new Map() // 流式块索引 -> { id, kind, text, name, args }
     let running = false
     let lastSeq = 0
     for (const ev of session.events ?? []) {
@@ -623,53 +709,141 @@ function setupScard(ctx) {
       if (seq > lastSeq) lastSeq = seq
       switch (ev.type) {
         case 'user/message': {
-          const text = textOfBlocks(ev.data?.content)
-          if (text !== '') messages.push({ id: `u${seq}`, role: 'user', text })
+          const source = ev.data?.source
+          const isHuman = recordOf(source) !== null && source.kind === 'user'
+          if (isHuman) {
+            const text = textOfBlocks(ev.data?.content)
+            if (text !== '') messages.push({ kind: 'user', id: `u${seq}`, text })
+          } else if (recordOf(source) !== null && source.kind !== 'tool') {
+            // 注入上下文（工作区指令 / 技能目录 / 快照 / 通知 / 跨会话召回 …）
+            const text = textOfBlocks(ev.data?.content)
+            const provenance = contextProvenanceOf(source)
+            const form = contextFormOf(source)
+            const row = {
+              kind: 'context',
+              id: `c${seq}`,
+              label: form !== null ? CONTEXT_FORM_LABELS[form] : (provenance.role === 'recall' ? '跨会话召回' : '上下文注入'),
+              producer: provenance.label ?? '',
+              text,
+            }
+            if (form === 'notice' && stringOf(source.summary) !== null) row.summary = source.summary
+            messages.push(row)
+          }
+          // kind 'tool' 的 user/message（若有）跳过：tool/result 事件负责工具结果卡
           break
         }
         case 'assistant/message': {
-          const text = textOfBlocks(ev.data?.message?.content)
-          if (text !== '') messages.push({ id: `a${seq}`, role: 'assistant', text })
+          const content = Array.isArray(ev.data?.message?.content) ? ev.data.message.content : null
+          if (content === null) break
+          for (const block of content) {
+            if (block === null || typeof block !== 'object') continue
+            if (block.type === 'text' && typeof block.text === 'string' && block.text !== '') {
+              messages.push({ kind: 'assistant', id: `a${seq}`, text: block.text })
+            } else if (block.type === 'reasoning' && typeof block.text === 'string' && block.text !== '') {
+              messages.push({ kind: 'reasoning', id: `r${seq}`, text: block.text })
+            }
+            // tool-call 块跳过：tool/call 事件单独成卡（与 DSH 会话视图一致，避免重复）
+          }
           break
         }
         case 'assistant/chunk': {
           const chunk = ev.data?.chunk
-          if (!chunk) break
-          if (chunk.type === 'block-start' && chunk.blockType === 'text') partial = { id: `p${seq}`, text: '' }
-          else if (chunk.type === 'text-delta' && partial !== null) partial.text += chunk.text ?? ''
-          else if (chunk.type === 'block-end' && partial !== null) {
-            if (partial.text !== '') messages.push({ id: partial.id, role: 'assistant', text: partial.text })
-            partial = null
+          if (chunk === null || typeof chunk !== 'object') break
+          if (chunk.type === 'block-start') {
+            const kind = chunk.blockType === 'text' || chunk.blockType === 'reasoning' || chunk.blockType === 'tool-call'
+              ? chunk.blockType
+              : 'text'
+            partials.set(chunk.index, { id: `p${seq}`, kind, text: '', name: '', args: '' })
+          } else if (chunk.type === 'text-delta') {
+            let p = partials.get(chunk.index)
+            if (p === undefined) { p = { id: `p${seq}`, kind: 'text', text: '', name: '', args: '' }; partials.set(chunk.index, p) }
+            if (p.kind === 'text') p.text += chunk.text ?? ''
+          } else if (chunk.type === 'reasoning-delta') {
+            let p = partials.get(chunk.index)
+            if (p === undefined) { p = { id: `p${seq}`, kind: 'reasoning', text: '', name: '', args: '' }; partials.set(chunk.index, p) }
+            if (p.kind === 'reasoning') p.text += chunk.text ?? ''
+          } else if (chunk.type === 'tool-call-delta') {
+            let p = partials.get(chunk.index)
+            if (p === undefined) { p = { id: `p${seq}`, kind: 'tool-call', text: '', name: '', args: '' }; partials.set(chunk.index, p) }
+            if (p.kind === 'tool-call') {
+              if (chunk.name !== undefined && typeof chunk.name === 'string' && chunk.name !== '') p.name = chunk.name
+              p.args += chunk.argumentsDelta ?? ''
+            }
+          } else if (chunk.type === 'block-end') {
+            const p = partials.get(chunk.index)
+            if (p !== undefined) {
+              partials.delete(chunk.index)
+              if (p.kind === 'text' && p.text !== '') messages.push({ kind: 'assistant', id: p.id, text: p.text })
+              else if (p.kind === 'reasoning' && p.text !== '') messages.push({ kind: 'reasoning', id: p.id, text: p.text })
+              else if (p.kind === 'tool-call' && (p.name !== '' || p.args !== '')) {
+                messages.push({ kind: 'tool', id: p.id, name: p.name, args: p.args, result: null, isError: false, done: false })
+              }
+            }
           }
           break
         }
-        case 'step/start': {
-          if (partial === null) partial = { id: `p${seq}`, text: '' }
+        case 'tool/call': {
+          const callId = typeof ev.data?.callId === 'string' ? ev.data.callId : null
+          if (callId === null || callId === '') break
+          const row = {
+            kind: 'tool',
+            id: `t${callId}`,
+            name: typeof ev.data.name === 'string' ? ev.data.name : '',
+            args: typeof ev.data.arguments === 'string' ? ev.data.arguments : '',
+            result: null,
+            isError: false,
+            done: false,
+          }
+          toolById.set(callId, messages.length)
+          messages.push(row)
           break
         }
-        case 'step/end': {
-          if (partial !== null) {
-            if (partial.text !== '') messages.push({ id: partial.id, role: 'assistant', text: partial.text })
-            partial = null
+        case 'tool/result': {
+          const data = ev.data ?? {}
+          const block = Array.isArray(data.message?.content) && data.message.content.length > 0 ? data.message.content[0] : null
+          const callId = block !== null && block.type === 'tool-result' && typeof block.toolCallId === 'string'
+            ? block.toolCallId
+            : (recordOf(data.message?.source) !== null && typeof data.message.source.callId === 'string' ? data.message.source.callId : null)
+          const index = callId !== null ? toolById.get(callId) : undefined
+          const row = index !== undefined ? messages[index] : undefined
+          const resultText = resultTextOf(data)
+          const isError = (block !== null && block.isError === true) || data.error !== undefined
+          if (row !== undefined && row.kind === 'tool') {
+            row.result = resultText
+            row.isError = isError
+            row.done = true
+          } else if (resultText !== '') {
+            messages.push({ kind: 'tool', id: `tr${seq}`, name: '', args: '', result: resultText, isError, done: true })
           }
+          break
+        }
+        case 'step/end':
+        case 'turn/end': {
+          if (ev.type === 'turn/end') running = false
+          flushPartials(partials, messages)
           break
         }
         case 'turn/start':
           running = true
           break
-        case 'turn/end':
-          running = false
-          break
         default:
           break
       }
     }
-    if (partial !== null && partial.text !== '') messages.push({ id: partial.id, role: 'assistant', text: partial.text })
     const trimmed = messages.slice(-TRANSCRIPT_LIMIT)
+    // 仍打开的流式块（未 block-end / step-end / turn-end）作为实时行上报
+    const livePartials = []
+    for (const p of partials.values()) {
+      if (p.kind === 'text' && p.text !== '') livePartials.push({ kind: 'assistant', id: p.id, text: p.text })
+      else if (p.kind === 'reasoning' && p.text !== '') livePartials.push({ kind: 'reasoning', id: p.id, text: p.text })
+      else if (p.kind === 'tool-call' && (p.name !== '' || p.args !== '')) {
+        livePartials.push({ kind: 'tool', id: p.id, name: p.name, args: p.args, result: null, isError: false, done: false })
+      }
+    }
     return {
       lastSeq,
       running,
-      partial: partial !== null ? partial.text : null,
+      partials: livePartials,
       messages: trimmed,
     }
   }

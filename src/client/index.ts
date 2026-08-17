@@ -1,4 +1,4 @@
-﻿// dsh-notes —— 浏览器 half（官方 client bundle，__ModuleLoader__ 契约）。
+// dsh-notes —— 浏览器 half（官方 client bundle，__ModuleLoader__ 契约）。
 //
 // 职责：
 //   1. shell.overlay 注册常驻条目（id: notes-dock）——「小计」竖栏（v0.4 融合）：
@@ -199,6 +199,100 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 }
 @keyframes dsh-notes-blink { 50% { opacity: 0; } }
 .sc-empty { align-self: center; margin: auto; color: var(--dsw-alias-label-tertiary); font-size: 12px; }
+
+/* ===== 折叠披露行（思考 / 上下文注入 / 工具调用 —— 与 DSH 会话视图一致） ===== */
+.sc-disc {
+  align-self: stretch;
+  width: 100%;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  overflow: hidden;
+}
+.sc-disc-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 24px;
+  padding: 3px 8px;
+  text-align: left;
+  border-radius: 7px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+  transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
+}
+.sc-disc-head:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.sc-disc-head .chev {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: var(--dsw-alias-label-tertiary);
+  transform: rotate(-90deg);
+  transition: transform var(--ds-transition-duration-fast, 0.12s) var(--ds-ease-in-out, ease);
+}
+.sc-disc.open .sc-disc-head .chev { transform: rotate(0deg); }
+.sc-disc-head .d {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.sc-disc.k-reasoning .d { background: var(--dsw-alias-state-business-primary); }
+.sc-disc.k-context .d { background: var(--dsw-alias-label-secondary); }
+.sc-disc.k-tool .d { background: var(--dsw-alias-state-warn-primary); }
+.sc-disc-head .tt {
+  min-width: 0;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sc-disc-head .sub {
+  min-width: 0;
+  flex: 1;
+  color: var(--dsw-alias-label-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sc-disc-head .st {
+  flex: none;
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
+}
+.sc-disc-head .st.run { color: var(--dsw-alias-state-business-primary); }
+.sc-disc-head .st.err { color: var(--dsw-alias-state-error-primary); }
+.sc-disc-body {
+  display: none;
+  padding: 2px 8px 7px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--dsw-alias-label-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.sc-disc.open .sc-disc-body { display: block; }
+.sc-disc.streaming .sc-disc-body { display: block; }
+.sc-disc-body.mono {
+  font-family: var(--ds-font-family-code, monospace);
+  font-size: 10.5px;
+  color: var(--dsw-alias-label-tertiary);
+}
+.sc-disc-body .res { margin-top: 6px; color: var(--dsw-alias-label-primary); }
+.sc-disc-body .res.err { color: var(--dsw-alias-state-error-primary); }
+.sc-disc-body .res-label { font-size: 10px; color: var(--dsw-alias-label-tertiary); }
+.sc-disc .cursor {
+  display: inline-block;
+  width: 5px;
+  height: 11px;
+  background: var(--dsw-alias-state-business-primary);
+  vertical-align: -2px;
+  animation: dsh-notes-blink 0.8s step-start infinite;
+}
 
 .sc-input-row { display: flex; gap: 6px; flex: none; padding: 8px 10px; border-top: 1px solid var(--dsw-alias-border-l1); }
 .sc-input {
@@ -1287,7 +1381,7 @@ function NotesDock(props) {
       'div',
       {
         className: 'dsh-notes-dock collapsed',
-        'data-notes-ver': '80ba745',
+        'data-notes-ver': '6f825a0',
         ref: rootRef,
         // 折叠态贴底：显式 top auto，覆盖测量出的顶部偏移
         style: { left: `${left}px`, top: 'auto' },
@@ -1339,33 +1433,103 @@ function NotesDock(props) {
     )
   }
 
-  /* ---- 会话卡片：消息列表 ---- */
+  /* ---- 会话卡片：消息列表（user/assistant 气泡 + 思考/上下文/工具折叠行） ---- */
+  const [openRows, setOpenRows] = useState(() => new Set())
+  function toggleRow(id) {
+    setOpenRows((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  function discRow(row, streaming) {
+    const open = streaming === true || openRows.has(row.id)
+    const key = streaming === true ? `${row.id}-live` : row.id
+    const status = row.kind === 'tool'
+      ? (row.done === true ? (row.isError === true ? '失败' : '完成') : '运行中')
+      : (streaming === true ? '思考中' : '')
+    let title = ''
+    let sub = ''
+    if (row.kind === 'reasoning') title = '思考'
+    else if (row.kind === 'context') { title = row.label ?? '上下文注入'; sub = row.producer ?? '' }
+    else if (row.kind === 'tool') { title = row.name !== '' ? `工具调用 · ${row.name}` : '工具调用'; sub = '' }
+    const bodyChildren = []
+    if (row.kind === 'reasoning' || row.kind === 'context') {
+      if (row.kind === 'context' && row.summary !== undefined && row.summary !== '') {
+        bodyChildren.push(React.createElement('div', { key: 'summary', className: 'res' }, row.summary))
+      }
+      if (row.text !== undefined && row.text !== '') {
+        bodyChildren.push(React.createElement('div', { key: 'text' }, row.text, streaming === true ? React.createElement('span', { className: 'cursor' }) : null))
+      }
+    } else if (row.kind === 'tool') {
+      bodyChildren.push(React.createElement('div', { key: 'args', className: 'mono' }, row.args !== '' ? row.args : '(无参数)'))
+      if (row.result !== null && row.result !== '') {
+        bodyChildren.push(
+          React.createElement('div', { key: 'res', className: 'res' + (row.isError === true ? ' err' : '') },
+            React.createElement('div', { key: 'rl', className: 'res-label' }, row.isError === true ? '结果（出错）' : '结果'),
+            row.result,
+          ),
+        )
+      } else if (streaming === true) {
+        bodyChildren.push(React.createElement('span', { key: 'cur', className: 'cursor' }))
+      }
+    }
+    return React.createElement(
+      'div',
+      { key, className: 'sc-disc' + (open ? ' open' : '') + ' k-' + row.kind + (streaming === true ? ' streaming' : '') },
+      React.createElement(
+        'button',
+        {
+          type: 'button',
+          className: 'sc-disc-head',
+          onClick: streaming === true ? undefined : () => toggleRow(row.id),
+        },
+        React.createElement('span', { className: 'chev', dangerouslySetInnerHTML: { __html: ICON_EXPAND } }),
+        React.createElement('span', { className: 'd' }),
+        React.createElement('span', { className: 'tt' }, title),
+        sub !== ''
+          ? React.createElement('span', { className: 'sub' }, sub)
+          : React.createElement('span', { className: 'sub' }),
+        status !== ''
+          ? React.createElement('span', { className: 'st' + (row.isError === true ? ' err' : (streaming === true ? ' run' : '')) }, status)
+          : null,
+      ),
+      React.createElement('div', { className: 'sc-disc-body' }, ...bodyChildren),
+    )
+  }
   const chatRows = []
   if (chat === null || chat.cold === true) {
     chatRows.push(React.createElement('div', { key: 'empty', className: 'sc-empty' }, chat === null ? '常驻会话 · 直接在这里对话' : '常驻会话 · 发送首条消息以开始'))
   } else {
     for (const message of chat.messages) {
-      if (message.role === 'user') {
+      if (message.kind === 'user') {
         chatRows.push(React.createElement('div', { key: message.id, className: 'sc-msg user' }, message.text))
-      } else if (message.role === 'assistant') {
+      } else if (message.kind === 'assistant') {
         chatRows.push(
           React.createElement('div', { key: message.id, className: 'sc-msg assistant' },
             React.createElement('div', { className: 'bubble' }, message.text),
           ),
         )
       } else {
-        chatRows.push(React.createElement('div', { key: message.id, className: 'sc-msg tool' }, message.text))
+        chatRows.push(discRow(message, false))
       }
     }
-    if (chat.partial !== null && chat.partial !== '') {
-      const last = chat.messages[chat.messages.length - 1]
-      const duplicate = last !== undefined && last.role === 'assistant' && last.text === chat.partial
-      if (!duplicate) {
-        chatRows.push(
-          React.createElement('div', { key: 'stream', className: 'sc-msg assistant' },
-            React.createElement('div', { className: 'bubble' }, chat.partial, React.createElement('span', { className: 'cursor' })),
-          ),
-        )
+    if (Array.isArray(chat.partials)) {
+      for (const partial of chat.partials) {
+        if (partial.kind === 'assistant') {
+          const last = chat.messages[chat.messages.length - 1]
+          const duplicate = last !== undefined && last.kind === 'assistant' && last.text === partial.text
+          if (!duplicate) {
+            chatRows.push(
+              React.createElement('div', { key: `${partial.id}-stream`, className: 'sc-msg assistant' },
+                React.createElement('div', { className: 'bubble' }, partial.text, React.createElement('span', { className: 'cursor' })),
+              ),
+            )
+          }
+        } else {
+          chatRows.push(discRow(partial, true))
+        }
       }
     }
   }
@@ -1496,7 +1660,7 @@ function NotesDock(props) {
     'div',
     {
       className: 'dsh-notes-dock',
-      'data-notes-ver': 'fusion-wip',
+      'data-notes-ver': '6f825a0',
       ref: (node) => {
         rootRef.current = node
         dockRef.current = node
