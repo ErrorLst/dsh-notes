@@ -3,6 +3,7 @@
 > 版本：0.4 · 状态：**已实现（M1 融合完成 + transcript 分级折叠，待重启 DSH 后验收）** · 关联原型：`prototype/index.html`
 >
 > 变更记录：
+> 0.4.9 —— **修复常驻会话提示词组装失败**：常驻会话无 cwd，而 deployment/preset persona 引用 `{{cwd}}` → 「prompt variable has no value」回合错误。修复：setup 时在 agent 作用域注册 `cwd` 变量兜底（`session.header.cwd` 缺省时回退 `sandboxPolicy.workspaceRoot`，遮蔽全局注册）。
 > 0.4.8 —— 卡片**简化显示**：只渲染用户输入 / 模型输出 / 回合错误；上下文注入、思考、工具调用行由 Host 照常折叠但客户端不再渲染（随时可恢复）。
 > 0.4.7 —— 回合错误可见化（官方 TurnErrorItem）：`turn/end` 携带 `reason.kind === 'error'` 时折叠为 **turn-error 行**（红点 + 「本轮运行失败」 + 错误信息 + 错误码），模型 429 等失败不再被吞掉。
 > 0.4.6 —— 披露行/拖拽把手**对齐官方实现**：思考（ReasoningRow）、上下文注入（ContextInjectionRow+ContextBody）、工具调用（ToolRow+IN/OUT 卡）改为与 DSH 会话视图逐条对应的结构/样式/文案（DisclosureRow 骨架：16px 图标槽 + 悬停换箭头 + 24px 行高 + 14px/24px 排版；Think 首行/末行摘要 + 运行扫描动画；上下文代码块正文 max-height 141px；工具变体图标 + 状态点 + 摘要）；分隔条与右缘宽度条改官方 AppFrame handle 悬浮胶囊样式（button-floating-fill/hover）。Host 上下文行透传原始 `source`、工具行增 `callId`。

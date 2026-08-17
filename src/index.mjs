@@ -477,6 +477,40 @@ function setupScard(ctx) {
   // residentId 的 ref 视图（供无闭包同步问题的监听器读取）
   const residentIdRef = { current: null }
 
+  // 常驻会话无 cwd：agent 作用域注册 cwd 变量兜底值（遮蔽全局注册，
+  // 否则 deployment/preset persona 的 {{cwd}} 无值 → 提示词组装失败）
+  let residentFallbackCwd = null
+  try {
+    if (sandboxPolicy !== undefined && sandboxPolicy.workspaceRoot !== undefined) {
+      residentFallbackCwd = String(sandboxPolicy.workspaceRoot)
+    }
+  } catch { /* ignore */ }
+
+  /** 常驻会话 setup：cwd 变量兜底 + 挂载预设（新建/恢复共用）。 */
+  async function mountResidentSetup(agentCtx, presetId) {
+    if (residentFallbackCwd !== null) {
+      try {
+        const systemPrompt = agentCtx.get('systemPrompt')
+        if (systemPrompt !== undefined && typeof systemPrompt.variable === 'function') {
+          systemPrompt.variable('cwd', (context) => {
+            try {
+              const cwd = context?.agent?.session?.header?.cwd
+              if (typeof cwd === 'string' && cwd !== '') return cwd
+            } catch { /* ignore */ }
+            return residentFallbackCwd
+          })
+        }
+      } catch (error) {
+        ctx.logger.warn(`[dsh-notes] resident cwd variable failed: ${String(error)}`)
+      }
+    }
+    try {
+      await agentPresets.mount(agentCtx, presetId)
+    } catch (error) {
+      ctx.logger.warn(`[dsh-notes] resident preset mount failed: ${String(error)}`)
+    }
+  }
+
   /* ---- 常驻会话生命周期 ---- */
   function defaultSelection() {
     try {
@@ -496,11 +530,7 @@ function setupScard(ctx) {
       ...(selection === undefined ? {} : { agentOptions: selection }),
       meta: { cwd: undefined }, // 无 cwd → 未分组，无关任何工作区
       setup: async (agentCtx) => {
-        try {
-          await agentPresets.mount(agentCtx, undefined) // 默认预设
-        } catch (error) {
-          ctx.logger.warn(`[dsh-notes] resident preset mount failed: ${String(error)}`)
-        }
+        await mountResidentSetup(agentCtx, undefined)
       },
     })
     const agent = handle.agent
@@ -539,11 +569,7 @@ function setupScard(ctx) {
       resumeSessionId: id,
       ...(selection === undefined ? {} : { agentOptions: selection }),
       setup: async (agentCtx) => {
-        try {
-          await agentPresets.mount(agentCtx, presetId ?? undefined)
-        } catch (error) {
-          ctx.logger.warn(`[dsh-notes] resident resume preset mount failed: ${String(error)}`)
-        }
+        await mountResidentSetup(agentCtx, presetId ?? undefined)
       },
     })
     return handle.agent
