@@ -629,7 +629,11 @@ body.rail .foot-quota .rail-only { display: inline; }
   flex-direction: column;
 }
 
-.sc-head {
+/* ==========================================================================
+   分区标题（会话卡片 / 小计 —— 同款样式，风格统一）
+   ========================================================================== */
+.sc-head,
+.np-head {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -638,8 +642,10 @@ body.rail .foot-quota .rail-only { display: inline; }
   padding: 6px 10px;
   border-bottom: 1px solid var(--dsw-alias-border-l1);
 }
-.sc-head .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dsw-alias-state-business-primary); flex: none; }
-.sc-head .t { font-size: 12.5px; font-weight: 600; line-height: 20px; white-space: nowrap; }
+.sc-head .dot,
+.np-head .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dsw-alias-state-business-primary); flex: none; }
+.sc-head .t,
+.np-head .t { font-size: 12.5px; font-weight: 600; line-height: 20px; white-space: nowrap; }
 .sc-head .sid {
   font-size: 10.5px;
   line-height: 16px;
@@ -653,7 +659,8 @@ body.rail .foot-quota .rail-only { display: inline; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.sc-head .spacer { flex: 1; }
+.sc-head .spacer,
+.np-head .spacer { flex: 1; }
 .sc-btn {
   flex: none;
   width: 24px;
@@ -884,8 +891,7 @@ body.rail .foot-quota .rail-only { display: inline; }
   gap: 2px;
   flex: none;
   padding: 6px 12px 0;
-}
-.np-tab {
+}.np-tab {
   padding: 3px 10px;
   border-radius: 999px;
   font-size: 12px;
@@ -1368,6 +1374,11 @@ body.rail .foot-quota .rail-only { display: inline; }
 
     <!-- ===== 下半：小计 ===== -->
     <section class="np-section">
+      <div class="np-head">
+        <span class="dot"></span>
+        <span class="t">小计</span>
+        <span class="spacer"></span>
+      </div>
       <div class="np-tabs" id="npTabs"></div>
       <div class="np-error" id="npError" hidden>存储不可用：请检查宿主 storage 域是否就绪。</div>
       <div class="np-sec-todo">
@@ -1411,7 +1422,7 @@ body.rail .foot-quota .rail-only { display: inline; }
 <div class="proto-hint" id="protoHint">
   <button class="x" id="hintClose">✕</button>
   <b>dsh-notes 融合原型（v0.4）</b><br/>
-  · 竖栏占据<b>上边栏之下</b>的整列高度（不覆盖顶部栏）：<b>上 = 常驻会话卡片，下 = 小计</b><br/>
+  · 竖栏占据<b>上边栏之下</b>的整列高度（不覆盖顶部栏）：<b>上 = 常驻会话卡片，下 = 小计</b>（标题同款样式）<br/>
   · 中间分隔条（带底色与手柄）拖拽调整上下比例（双击复位 46%），折叠/比例均持久化<br/>
   · 上半卡片：直接对话（发送/停止/流式）、⚙ 预设/模型/思考等级、清空会话（归档+新建）、↗ 在中间栏打开<br/>
   · 下半小计：全局/工作区 tab、待办（勾选/编辑/置顶/拖拽/撤销/清空）、随记自动保存<br/>
