@@ -1379,23 +1379,7 @@ button.ds-leading { cursor: pointer; }
   font-size: 10.5px;
   color: var(--dsw-alias-label-tertiary);
 }
-.np-detail-foot {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  flex: none;
-  padding: 0 10px 10px;
-}
-.np-detail-foot button {
-  height: 26px;
-  padding: 0 14px;
-  border-radius: 7px;
-  font-size: 12px;
-  cursor: pointer;
-  border: none;
-}
-.np-detail-foot .yes { background: var(--dsw-alias-state-business-primary); color: var(--dsw-alias-label-primary-foreground); }
-.np-detail-foot .no { border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-button-elevated-fill); color: var(--dsw-alias-label-primary); }
+.np-detail-status { font-size: 10.5px; color: var(--dsw-alias-label-tertiary); }
 
 .np-pin {
   flex: none;
@@ -1712,6 +1696,7 @@ button.ds-leading { cursor: pointer; }
         <div class="np-detail-card">
           <div class="np-detail-head">
             <span class="t">待办详情</span>
+            <span class="np-detail-status" id="npDetailStatus"></span>
             <button type="button" class="np-detail-close" id="npDetailClose" title="关闭">×</button>
           </div>
           <div class="np-detail-body">
@@ -1724,10 +1709,6 @@ button.ds-leading { cursor: pointer; }
               <textarea class="np-detail-textarea" id="npDetailTextarea" placeholder="描述 / 备注（可多行）…" maxlength="20000" spellcheck="false"></textarea>
             </div>
             <div class="np-detail-meta" id="npDetailMeta"></div>
-          </div>
-          <div class="np-detail-foot">
-            <button type="button" class="no" id="npDetailCancel">取消</button>
-            <button type="button" class="yes" id="npDetailSave">保存</button>
           </div>
         </div>
       </div>
@@ -2758,6 +2739,8 @@ function cancelEdit(input) {
 
 /* 待办详情卡片 */
 let detailItemId = null
+let detailDirty = false
+let detailTimer = null
 function formatTime(ms) {
   if (typeof ms !== 'number' || !Number.isFinite(ms)) return '—'
   const d = new Date(ms)
@@ -2779,34 +2762,47 @@ function renderDetailMeta() {
 }
 function openDetail(item) {
   detailItemId = item.id
+  detailDirty = false
+  if (detailTimer !== null) { clearTimeout(detailTimer); detailTimer = null }
+  $('npDetailStatus').textContent = ''
   $('npDetailTitle').value = item.text
   $('npDetailTextarea').value = item.detail || ''
   renderDetailMeta()
   $('npDetailOverlay').hidden = false
   $('npDetailTitle').focus()
 }
+function applyDetailSave() {
+  if (!detailDirty) return
+  detailDirty = false
+  const scope = scopeOf(state.tab)
+  const item = scope && scope.todos.find((it) => it.id === detailItemId)
+  if (!item) return
+  const text = $('npDetailTitle').value.trim()
+  if (!text) { $('npDetailStatus').textContent = ''; return }
+  item.text = text
+  item.detail = $('npDetailTextarea').value
+  item.updatedAt = now()
+  $('npDetailStatus').textContent = '已保存'
+  renderDetailMeta()
+  persist()
+  renderDock()
+}
+function scheduleDetailSave() {
+  detailDirty = true
+  $('npDetailStatus').textContent = '保存中…'
+  if (detailTimer !== null) clearTimeout(detailTimer)
+  detailTimer = setTimeout(() => { detailTimer = null; applyDetailSave() }, 600)
+}
 function closeDetail() {
+  if (detailTimer !== null) { clearTimeout(detailTimer); detailTimer = null }
+  applyDetailSave()
   $('npDetailOverlay').hidden = true
   detailItemId = null
 }
-function saveDetail() {
-  const scope = scopeOf(state.tab)
-  const item = scope && scope.todos.find((it) => it.id === detailItemId)
-  if (item) {
-    const text = $('npDetailTitle').value.trim()
-    if (text) {
-      item.text = text
-      item.detail = $('npDetailTextarea').value
-      item.updatedAt = now()
-    }
-  }
-  closeDetail()
-  renderDock()
-}
 $('npDetailClose').addEventListener('click', closeDetail)
-$('npDetailCancel').addEventListener('click', closeDetail)
-$('npDetailSave').addEventListener('click', saveDetail)
 $('npDetailOverlay').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeDetail() })
+$('npDetailTitle').addEventListener('input', scheduleDetailSave)
+$('npDetailTextarea').addEventListener('input', scheduleDetailSave)
 $('npDetailTitle').addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDetail() })
 $('npDetailTextarea').addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDetail() })
 

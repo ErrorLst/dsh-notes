@@ -983,23 +983,7 @@ button.ds-leading { cursor: pointer; }
   font-size: 10.5px;
   color: var(--dsw-alias-label-tertiary);
 }
-.np-detail-foot {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  flex: none;
-  padding: 0 10px 10px;
-}
-.np-detail-foot button {
-  height: 26px;
-  padding: 0 14px;
-  border-radius: 7px;
-  font-size: 12px;
-  cursor: pointer;
-  border: none;
-}
-.np-detail-foot .yes { background: var(--dsw-alias-state-business-primary); color: var(--dsw-alias-label-primary-foreground); }
-.np-detail-foot .no { border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-button-elevated-fill); color: var(--dsw-alias-label-primary); }
+.np-detail-status { font-size: 10.5px; color: var(--dsw-alias-label-tertiary); }
 .np-empty { padding: 18px 12px; text-align: center; font-size: 11.5px; color: var(--dsw-alias-label-tertiary); }
 
 .np-undo {
@@ -1587,11 +1571,16 @@ function NotesDock(props) {
   useEffect(() => {
     if (lastWorkspaceRef.current !== workspaceId) {
       lastWorkspaceRef.current = workspaceId
+      if (detailDraftRef.current !== null) closeDetail() // 作用域变了，详情卡片落盘并关闭
       setTab(workspaceId !== undefined ? 'workspace' : 'global')
     }
   }, [workspaceId])
   const [editing, setEditing] = useState(null) // { id, text }
   const [detailDraft, setDetailDraft] = useState(null) // { id, text, detail } | null（待办详情卡片草稿）
+  const [detailStatus, setDetailStatus] = useState('')
+  const detailDraftRef = useRef(null)
+  const detailDirtyRef = useRef(false)
+  const detailTimerRef = useRef(null)
   const [memoText, setMemoText] = useState('')
   const [memoStatus, setMemoStatus] = useState('')
   const [undoInfo, setUndoInfo] = useState(null) // { scope, count } | null
@@ -1995,28 +1984,54 @@ function NotesDock(props) {
     void post({ action: 'edit', scope: tab, workspaceId: workspaceArg, id: edit.id, text })
   }
 
-  /* ---------- 待办详情卡片（弹出编辑显示详细内容） ---------- */
+  /* ---------- 待办详情卡片（弹出编辑，自动保存：防抖 600ms + 关闭时落盘） ---------- */
   function openDetail(item) {
-    setDetailDraft({ id: item.id, text: item.text, detail: item.detail ?? '' })
+    flushDetailSave()
+    const draft = { id: item.id, text: item.text, detail: item.detail ?? '' }
+    detailDraftRef.current = draft
+    detailDirtyRef.current = false
+    setDetailStatus('')
+    setDetailDraft(draft)
   }
-  function closeDetail() {
-    setDetailDraft(null)
-  }
-  function saveDetail() {
-    const draft = detailDraft
+  function flushDetailSave() {
+    if (detailTimerRef.current !== null) { clearTimeout(detailTimerRef.current); detailTimerRef.current = null }
+    const draft = detailDraftRef.current
     if (draft === null) return
+    if (!detailDirtyRef.current) return
+    detailDirtyRef.current = false
     const text = draft.text.trim()
-    if (text === '') return
-    setDetailDraft(null)
+    if (text === '') { setDetailStatus(''); return } // 空标题不保存
+    setDetailStatus('已保存')
     void post({ action: 'edit', scope: tab, workspaceId: workspaceArg, id: draft.id, text, detail: draft.detail })
   }
+  function scheduleDetailSave() {
+    detailDirtyRef.current = true
+    setDetailStatus('保存中…')
+    if (detailTimerRef.current !== null) clearTimeout(detailTimerRef.current)
+    detailTimerRef.current = setTimeout(() => {
+      detailTimerRef.current = null
+      flushDetailSave()
+    }, MEMO_DEBOUNCE_MS)
+  }
+  function closeDetail() {
+    flushDetailSave()
+    detailDraftRef.current = null
+    setDetailStatus('')
+    setDetailDraft(null)
+  }
   function onDetailInput(event) {
-    if (detailDraft === null) return
-    setDetailDraft({ ...detailDraft, text: event.target.value })
+    const draft = detailDraftRef.current
+    if (draft === null) return
+    draft.text = event.target.value
+    setDetailDraft({ ...draft })
+    scheduleDetailSave()
   }
   function onDetailTextarea(event) {
-    if (detailDraft === null) return
-    setDetailDraft({ ...detailDraft, detail: event.target.value })
+    const draft = detailDraftRef.current
+    if (draft === null) return
+    draft.detail = event.target.value
+    setDetailDraft({ ...draft })
+    scheduleDetailSave()
   }
 
   function formatTime(ms) {
@@ -2757,6 +2772,9 @@ function NotesDock(props) {
                   'div',
                   { className: 'np-detail-head' },
                   React.createElement('span', { className: 't' }, '待办详情'),
+                  detailStatus === ''
+                    ? null
+                    : React.createElement('span', { className: 'np-detail-status' }, detailStatus),
                   React.createElement('button', { type: 'button', className: 'np-detail-close', 'data-tip': '关闭', onClick: closeDetail }, '×'),
                 ),
                 React.createElement(
@@ -2802,12 +2820,6 @@ function NotesDock(props) {
                       item.pinned ? React.createElement('span', null, '已置顶') : null,
                     )
                   })(),
-                ),
-                React.createElement(
-                  'div',
-                  { className: 'np-detail-foot' },
-                  React.createElement('button', { type: 'button', className: 'no', onClick: closeDetail }, '取消'),
-                  React.createElement('button', { type: 'button', className: 'yes', onClick: saveDetail }, '保存'),
                 ),
               ),
             ),
