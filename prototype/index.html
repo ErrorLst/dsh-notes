@@ -722,6 +722,32 @@ body.rail .foot-quota .rail-only { display: inline; }
 }
 @keyframes dsh-notes-blink { 50% { opacity: 0; } }
 
+/* 运行中状态行：官方 turnStatus 同款流光（品牌渐变 + background-clip 文字） */
+.sc-streaming-status {
+  align-self: flex-start;
+  height: 26px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 26px;
+  white-space: nowrap;
+  background: linear-gradient(90deg,
+    var(--dsw-alias-state-business-primary) 0%,
+    var(--dsw-alias-state-business-primary) 40%,
+    var(--dsw-alias-brand-primary) 50%,
+    var(--dsw-alias-state-business-primary) 60%,
+    var(--dsw-alias-state-business-primary) 100%);
+  background-size: 250% 100%;
+  background-position: 100% 0;
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: dsh-notes-shimmer 1.8s linear infinite;
+}
+@keyframes dsh-notes-shimmer { to { background-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .sc-streaming-status { background-position: 0 0; background-size: 100% 100%; animation: none; }
+}
+
 /* ==========================================================================
    折叠披露行 —— 官方同款实现（DisclosureRow / ReasoningRow /
    ContextInjectionRow / ContextBody / ToolRow 的 CSS 转写）
@@ -1983,7 +2009,10 @@ function renderCardMessages() {
     }
     // 简化显示：上下文注入 / 思考 / 工具调用行（host 仍折叠）不渲染
   }
-  if (!hasContent) html = '<div class="sc-empty">常驻会话 · 直接在这里对话</div>'
+  // 运行中且尚无可见流式文本（思考/工具阶段）：官方同款流光「正在生成…」状态行
+  const streamingText = state.card.messages.some((m) => m.kind === 'assistant' && m.streaming === true && m.text !== '')
+  if (state.card.running && !streamingText) html += '<div class="sc-streaming-status" role="status">正在生成…</div>'
+  if (!hasContent && !state.card.running) html = '<div class="sc-empty">常驻会话 · 直接在这里对话</div>'
   el.innerHTML = html
   el.scrollTop = el.scrollHeight
 }

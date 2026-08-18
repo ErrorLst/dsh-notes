@@ -3,6 +3,7 @@
 > 版本：0.4 · 状态：**已实现（M1 融合完成 + transcript 分级折叠，待重启 DSH 后验收）** · 关联原型：`prototype/index.html`
 >
 > 变更记录：
+> 0.4.16 —— 卡片输出**瀑布流效果**：运行中轮询 800ms → 400ms（流式内容更连续）；流式输出尾部常显**闪烁光标**（不再只在纯文本降级时显示）；内容增长时若停留在底部则**自动跟随滚动**（用户上翻后不打断，发送后强制滚到底一次；与官方 ChatView 一致）；思考/工具阶段（尚无可见流式文本）显示官方 turnStatus 同款**流光「正在生成…」状态行**（品牌渐变 + background-clip 文字 + 1.8s shimmer）；新消息行轻微上浮淡入（0.18s，流式行 key 稳定不重复触发）；`prefers-reduced-motion` 下关闭动画。原型同步状态行演示。
 > 0.4.15 —— **修复发送后误报「发送失败」**：`session.prompt` 的 wire 响应是 `{ok:true, value:{accepted:true}}`——`accepted` 在 `value` 内层，客户端旧判断读顶层 `result.accepted` 恒为 `undefined` → 每次发送成功也走失败分支显示「发送失败」，直到下一次轮询 `scard-chat-state` 成功才清掉（表现为「先显示发送失败、一会儿内容出现后消失」）。修复：改判 `result.ok === true && result.value?.accepted === true`。
 > 0.4.14 —— 卡片模型输出支持 **Markdown 渲染**：复用官方 `dsh-client-ui-primitives` 的 `MarkdownText`（GFM + TeX 数学 + 安全链接 + 流式增量渲染，代码块带复制按钮）；加载失败降级纯文本。原型加精简 md 演示渲染器。
 > 0.4.13 —— **修复回复内容重复显示**：同一输出被推了两次——流式块收尾（`block-end`/冲刷）先落一行，随后 `assistant/message` 最终事件又落一行。修复：按 `turn:step` 记录流式收尾行，`assistant/message` 落地时先移除同 step 的流式行再推最终行（与官方会话「partial 被最终消息替换」一致）；工具行改按 `callId` 去重（流式块与 `tool/call` 事件共用一行）。

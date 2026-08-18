@@ -9,7 +9,7 @@
 //      MutationObserver/ResizeObserver 跟随侧栏折叠/拖拽与会话头部高度变化。
 //   2. 竖栏内容（自上而下）：
 //      - 上半：常驻会话卡片 —— 消息列表/输入发送/停止/流式 partial（轮询
-//        scard-chat-state 800ms/3s）、⚙ 设置弹窗（预设/模型/思考等级）、
+//        scard-chat-state 400ms/3s（运行中 400ms，瀑布流跟随滚动））、⚙ 设置弹窗（预设/模型/思考等级）、
 //        清空会话（归档+新建）；
 //        发送/停止走 sessions.binding(id).session.prompt/cancel（wire RPC）。
 //      - 分隔条：拖拽调整上下比例（25%–75%，双击复位 46%），localStorage 持久化。
@@ -85,7 +85,7 @@ const WIDTH_MIN = 220
 const WIDTH_MAX = 480
 const MEMO_DEBOUNCE_MS = 600
 const UNDO_TTL_MS = 5000
-const POLL_RUNNING_MS = 800
+const POLL_RUNNING_MS = 400
 const POLL_IDLE_MS = 3000
 const ICON_CHECK =
   '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.5L5 9l4.5-6"/></svg>'
@@ -325,6 +325,40 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   animation: dsh-notes-blink 0.8s step-start infinite;
 }
 @keyframes dsh-notes-blink { 50% { opacity: 0; } }
+
+/* 运行中状态行：官方 turnStatus 同款流光（品牌渐变 + background-clip 文字） */
+.sc-streaming-status {
+  align-self: flex-start;
+  height: 26px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 26px;
+  white-space: nowrap;
+  background: linear-gradient(90deg,
+    var(--dsw-alias-state-business-primary) 0%,
+    var(--dsw-alias-state-business-primary) 40%,
+    var(--dsw-alias-brand-primary) 50%,
+    var(--dsw-alias-state-business-primary) 60%,
+    var(--dsw-alias-state-business-primary) 100%);
+  background-size: 250% 100%;
+  background-position: 100% 0;
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: dsh-notes-shimmer 1.8s linear infinite;
+}
+@keyframes dsh-notes-shimmer { to { background-position: 0 0; } }
+
+/* 新消息进场（瀑布流）：轻微上浮淡入；流式行 key 稳定不重复触发 */
+.sc-msg, .ds-turn-error { animation: dsh-notes-rise 0.18s ease-out; }
+@keyframes dsh-notes-rise {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sc-streaming-status { background-position: 0 0; background-size: 100% 100%; animation: none; }
+  .sc-msg, .ds-turn-error { animation: none; }
+}
 .sc-empty { align-self: center; margin: auto; color: var(--dsw-alias-label-tertiary); font-size: 12px; }
 
 /* ======================================================================
@@ -1450,6 +1484,9 @@ function NotesDock(props) {
   const flipFromRef = useRef(null)
   const chatRunningRef = useRef(false)
   const splitDragRef = useRef(null)
+  const scMsgRef = useRef(null) // 消息列表滚动容器（瀑布流跟随）
+  const atBottomRef = useRef(true) // 用户是否停留在底部（跟随滚动依据）
+  const forceFollowRef = useRef(false) // 发送后强制滚到底一次
 
   /* ---------- 自定义悬浮提示 ---------- */
   function tipElOf(target) {
@@ -1878,7 +1915,7 @@ function NotesDock(props) {
     return result
   }, [])
 
-  /* 轮询：展开时运行中 800ms / 空闲 3s */
+  /* 轮询：展开时运行中 400ms（瀑布流） / 空闲 3s */
   useEffect(() => {
     if (collapsed) return
     let alive = true
@@ -1897,6 +1934,25 @@ function NotesDock(props) {
     }
   }, [collapsed, fetchChat])
 
+  /* 瀑布流跟随：内容增长时若停留在底部则自动滚到底（与官方 ChatView 一致）；
+     发送后强制跟随一次；展开时若本就在底部也滚到底。 */
+  useLayoutEffect(() => {
+    const el = scMsgRef.current
+    if (el === null) return
+    if (forceFollowRef.current || atBottomRef.current) {
+      el.scrollTop = el.scrollHeight
+      atBottomRef.current = true
+    }
+    forceFollowRef.current = false
+  }, [chat, collapsed])
+
+  function onScMsgScroll() {
+    const el = scMsgRef.current
+    if (el === null) return
+    const floor = Math.max(0, el.scrollHeight - el.clientHeight)
+    atBottomRef.current = floor - el.scrollTop <= 24
+  }
+
   /* 展开/挂载时刷新卡片状态 */
   useEffect(() => {
     if (collapsed) return
@@ -1909,6 +1965,7 @@ function NotesDock(props) {
     const text = input.value.trim()
     if (text === '') return
     input.value = ''
+    forceFollowRef.current = true // 发送后滚到底，等待瀑布流落下
     const binding = sessions !== undefined && sessions !== null ? sessions.binding(card.sessionId) : undefined
     if (binding === undefined || binding.session === undefined) {
       setCardError('会话暂不可用（未列出），正在重试…')
@@ -2169,6 +2226,9 @@ function NotesDock(props) {
         if (el !== null) chatRows.push(el)
       }
     }
+    const streamingText = Array.isArray(chat.partials)
+      ? chat.partials.some((p) => p.kind === 'assistant' && p.text !== '')
+      : false
     if (Array.isArray(chat.partials)) {
       for (const partial of chat.partials) {
         if (partial.kind === 'assistant') {
@@ -2179,9 +2239,7 @@ function NotesDock(props) {
               React.createElement('div', { key: `${partial.id}-stream`, className: 'sc-msg assistant' },
                 React.createElement('div', { className: 'bubble' },
                   assistantContent(partial.text, true),
-                  MarkdownText === null && markedParse === null
-                    ? React.createElement('span', { className: 'cursor' })
-                    : null,
+                  React.createElement('span', { className: 'cursor' }),
                 ),
               ),
             )
@@ -2191,6 +2249,10 @@ function NotesDock(props) {
           if (el !== null) chatRows.push(el)
         }
       }
+    }
+    /* 运行中且尚无可见流式文本（思考/工具阶段）：官方同款流光「正在生成…」状态行 */
+    if (chat.running === true && !streamingText) {
+      chatRows.push(React.createElement('div', { key: 'streaming-status', className: 'sc-streaming-status', role: 'status' }, '正在生成…'))
     }
   }
 
@@ -2359,7 +2421,7 @@ function NotesDock(props) {
             dangerouslySetInnerHTML: { __html: ICON_COLLAPSE },
           }),
         ),
-        React.createElement('div', { className: 'sc-messages' }, ...chatRows),
+        React.createElement('div', { ref: scMsgRef, className: 'sc-messages', onScroll: onScMsgScroll }, ...chatRows),
         cardError === null
           ? null
           : React.createElement('div', { className: 'sc-error' }, cardError),
