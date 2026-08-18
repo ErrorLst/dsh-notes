@@ -675,7 +675,7 @@ button.ds-leading { cursor: pointer; }
 .dsh-notes-dock.collapsed .dock-resizer { display: none; }
 
 /* ===== 下半：小计 ===== */
-.np-section { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.np-section { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
 .np-tabs { display: flex; gap: 2px; flex: none; padding: 6px 12px 0; }
 .np-tab {
   padding: 3px 10px;
@@ -2739,6 +2739,76 @@ function NotesDock(props) {
             onBlur: onMemoBlur,
           }),
         ),
+        /* 待办详情卡片：只覆盖小计区域，不遮挡常驻会话 */
+        detailDraft === null
+          ? null
+          : React.createElement(
+              'div',
+              {
+                className: 'np-detail-overlay',
+                onClick: (event) => { if (event.target === event.currentTarget) closeDetail() },
+              },
+              React.createElement(
+                'div',
+                { className: 'np-detail-card' },
+                React.createElement(
+                  'div',
+                  { className: 'np-detail-head' },
+                  React.createElement('span', { className: 't' }, '待办详情'),
+                  React.createElement('button', { type: 'button', className: 'np-detail-close', 'data-tip': '关闭', onClick: closeDetail }, '×'),
+                ),
+                React.createElement(
+                  'div',
+                  { className: 'np-detail-body' },
+                  React.createElement(
+                    'div',
+                    { className: 'np-detail-field' },
+                    React.createElement('label', null, '标题'),
+                    React.createElement('input', {
+                      className: 'np-detail-title',
+                      maxLength: 500,
+                      value: detailDraft.text,
+                      autoFocus: true,
+                      onChange: onDetailInput,
+                      onKeyDown: (event) => { if (event.key === 'Escape') closeDetail() },
+                    }),
+                  ),
+                  React.createElement(
+                    'div',
+                    { className: 'np-detail-field' },
+                    React.createElement('label', null, '描述'),
+                    React.createElement('textarea', {
+                      className: 'np-detail-textarea',
+                      placeholder: '描述 / 备注（可多行）…',
+                      maxLength: 20000,
+                      spellCheck: false,
+                      value: detailDraft.detail,
+                      onChange: onDetailTextarea,
+                      onKeyDown: (event) => { if (event.key === 'Escape') closeDetail() },
+                    }),
+                  ),
+                  (() => {
+                    const scope = scopeOf(data, tab)
+                    const item = scope === null ? undefined : scope.todos.find((it) => it.id === detailDraft.id)
+                    if (item === undefined) return null
+                    return React.createElement(
+                      'div',
+                      { className: 'np-detail-meta' },
+                      React.createElement('span', null, `创建 ${formatTime(item.createdAt)}`),
+                      React.createElement('span', null, `更新 ${formatTime(item.updatedAt)}`),
+                      React.createElement('span', null, item.done ? '已完成' : '未完成'),
+                      item.pinned ? React.createElement('span', null, '已置顶') : null,
+                    )
+                  })(),
+                ),
+                React.createElement(
+                  'div',
+                  { className: 'np-detail-foot' },
+                  React.createElement('button', { type: 'button', className: 'no', onClick: closeDetail }, '取消'),
+                  React.createElement('button', { type: 'button', className: 'yes', onClick: saveDetail }, '保存'),
+                ),
+              ),
+            ),
       ),
     ),
     React.createElement('div', {
@@ -2750,75 +2820,6 @@ function NotesDock(props) {
       onPointerCancel: onWidthPointerUp,
     }),
     React.createElement('div', { className: 'np-tip', ref: tipRef, hidden: true }),
-    detailDraft === null
-      ? null
-      : React.createElement(
-          'div',
-          {
-            className: 'np-detail-overlay',
-            onClick: (event) => { if (event.target === event.currentTarget) closeDetail() },
-          },
-          React.createElement(
-            'div',
-            { className: 'np-detail-card' },
-            React.createElement(
-              'div',
-              { className: 'np-detail-head' },
-              React.createElement('span', { className: 't' }, '待办详情'),
-              React.createElement('button', { type: 'button', className: 'np-detail-close', 'data-tip': '关闭', onClick: closeDetail }, '×'),
-            ),
-            React.createElement(
-              'div',
-              { className: 'np-detail-body' },
-              React.createElement(
-                'div',
-                { className: 'np-detail-field' },
-                React.createElement('label', null, '标题'),
-                React.createElement('input', {
-                  className: 'np-detail-title',
-                  maxLength: 500,
-                  value: detailDraft.text,
-                  autoFocus: true,
-                  onChange: onDetailInput,
-                  onKeyDown: (event) => { if (event.key === 'Escape') closeDetail() },
-                }),
-              ),
-              React.createElement(
-                'div',
-                { className: 'np-detail-field' },
-                React.createElement('label', null, '描述'),
-                React.createElement('textarea', {
-                  className: 'np-detail-textarea',
-                  placeholder: '描述 / 备注（可多行）…',
-                  maxLength: 20000,
-                  spellCheck: false,
-                  value: detailDraft.detail,
-                  onChange: onDetailTextarea,
-                  onKeyDown: (event) => { if (event.key === 'Escape') closeDetail() },
-                }),
-              ),
-              (() => {
-                const scope = scopeOf(data, tab)
-                const item = scope === null ? undefined : scope.todos.find((it) => it.id === detailDraft.id)
-                if (item === undefined) return null
-                return React.createElement(
-                  'div',
-                  { className: 'np-detail-meta' },
-                  React.createElement('span', null, `创建 ${formatTime(item.createdAt)}`),
-                  React.createElement('span', null, `更新 ${formatTime(item.updatedAt)}`),
-                  React.createElement('span', null, item.done ? '已完成' : '未完成'),
-                  item.pinned ? React.createElement('span', null, '已置顶') : null,
-                )
-              })(),
-            ),
-            React.createElement(
-              'div',
-              { className: 'np-detail-foot' },
-              React.createElement('button', { type: 'button', className: 'no', onClick: closeDetail }, '取消'),
-              React.createElement('button', { type: 'button', className: 'yes', onClick: saveDetail }, '保存'),
-            ),
-          ),
-        ),
   )
 }
 

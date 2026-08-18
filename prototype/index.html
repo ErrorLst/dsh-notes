@@ -1062,6 +1062,7 @@ button.ds-leading { cursor: pointer; }
   min-height: 0;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .np-tabs {
@@ -1703,36 +1704,36 @@ button.ds-leading { cursor: pointer; }
         </div>
         <textarea class="np-memo" id="npMemo" placeholder="随意记录点什么…（自动保存）" spellcheck="false"></textarea>
       </div>
+
+      <!-- ===== 待办详情卡片（只覆盖小计区域，不遮挡常驻会话） ===== -->
+      <div class="np-detail-overlay" id="npDetailOverlay" hidden>
+        <div class="np-detail-card">
+          <div class="np-detail-head">
+            <span class="t">待办详情</span>
+            <button type="button" class="np-detail-close" id="npDetailClose" title="关闭">×</button>
+          </div>
+          <div class="np-detail-body">
+            <div class="np-detail-field">
+              <label>标题</label>
+              <input class="np-detail-title" id="npDetailTitle" maxlength="500" />
+            </div>
+            <div class="np-detail-field">
+              <label>描述</label>
+              <textarea class="np-detail-textarea" id="npDetailTextarea" placeholder="描述 / 备注（可多行）…" maxlength="20000" spellcheck="false"></textarea>
+            </div>
+            <div class="np-detail-meta" id="npDetailMeta"></div>
+          </div>
+          <div class="np-detail-foot">
+            <button type="button" class="no" id="npDetailCancel">取消</button>
+            <button type="button" class="yes" id="npDetailSave">保存</button>
+          </div>
+        </div>
+      </div>
     </section>
   </div>
 
   <!-- ===== 右边缘水平拖拽条（调整竖栏宽度） ===== -->
   <div class="dock-resizer" id="dockResizer" title="拖动调整竖栏宽度"></div>
-
-  <!-- ===== 待办详情卡片（弹出编辑显示详细内容） ===== -->
-  <div class="np-detail-overlay" id="npDetailOverlay" hidden>
-    <div class="np-detail-card">
-      <div class="np-detail-head">
-        <span class="t">待办详情</span>
-        <button type="button" class="np-detail-close" id="npDetailClose" title="关闭">×</button>
-      </div>
-      <div class="np-detail-body">
-        <div class="np-detail-field">
-          <label>标题</label>
-          <input class="np-detail-title" id="npDetailTitle" maxlength="500" />
-        </div>
-        <div class="np-detail-field">
-          <label>描述</label>
-          <textarea class="np-detail-textarea" id="npDetailTextarea" placeholder="描述 / 备注（可多行）…" maxlength="20000" spellcheck="false"></textarea>
-        </div>
-        <div class="np-detail-meta" id="npDetailMeta"></div>
-      </div>
-      <div class="np-detail-foot">
-        <button type="button" class="no" id="npDetailCancel">取消</button>
-        <button type="button" class="yes" id="npDetailSave">保存</button>
-      </div>
-    </div>
-  </div>
 </section>
 
 <!-- ====================== 原型演示工具 ====================== -->
