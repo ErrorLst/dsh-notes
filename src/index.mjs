@@ -587,12 +587,26 @@ function setupScard(ctx) {
     return undefined
   }
 
+  /** 冷恢复后把持久化模型/思考等级同步进 agent/request 覆盖层。
+   * agentOptions 的 reasoningEffort 不会被 agent-loop 直接播种到请求，
+   * 必须经全局瀑布监听显式应用（与 scard-select-model 同一路径）。 */
+  function applyPersistedOverride(id) {
+    const persisted = persistedSelection()
+    if (persisted === undefined) return
+    overrides.set(id, {
+      provider: persisted.provider,
+      model: persisted.model,
+      ...(persisted.reasoningEffort === undefined ? {} : { effort: persisted.reasoningEffort }),
+    })
+  }
+
   async function createResident() {
     const sessionId = 'sesscard-' + Math.random().toString(36).slice(2, 10)
     const cwd = residentCwd()
     const selection = persistedSelection() ?? defaultSelection()
     const presetId = typeof residentSettings.presetId === 'string' && residentSettings.presetId !== '' ? residentSettings.presetId : undefined
     let handle
+    let fallback = false
     try {
       handle = await agents.create({
         sessionId,
@@ -604,6 +618,7 @@ function setupScard(ctx) {
       })
     } catch (error) {
       // 持久化的模型可能已不可用：回退默认选择重试一次
+      fallback = true
       ctx.logger.warn(`[dsh-notes] resident create with persisted selection failed (${String(error?.message ?? error)}), retrying with default`)
       handle = await agents.create({
         sessionId,
@@ -614,6 +629,7 @@ function setupScard(ctx) {
         },
       })
     }
+    if (!fallback) applyPersistedOverride(sessionId)
     const agent = handle.agent
     try {
       if (sessionTitle !== undefined) await sessionTitle.rename(agent.session, '常驻会话')
@@ -643,7 +659,10 @@ function setupScard(ctx) {
 
   async function resumeAgent(id) {
     const existing = agents.get(id)
-    if (existing !== undefined) return existing
+    if (existing !== undefined) {
+      applyPersistedOverride(id)
+      return existing
+    }
     const selection = persistedSelection() ?? defaultSelection()
     let presetId = typeof residentSettings.presetId === 'string' && residentSettings.presetId !== '' ? residentSettings.presetId : undefined
     presetId ??= await foldedPresetFromPersistence(id)
@@ -654,6 +673,7 @@ function setupScard(ctx) {
         await mountResidentSetup(agentCtx, presetId)
       },
     })
+    applyPersistedOverride(id)
     return handle.agent
   }
 
