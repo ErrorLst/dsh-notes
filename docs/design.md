@@ -3,6 +3,7 @@
 > 版本：0.4 · 状态：**已实现（M1 融合完成 + transcript 分级折叠，待重启 DSH 后验收）** · 关联原型：`prototype/index.html`
 >
 > 变更记录：
+> 0.4.19 —— 待办**详情按钮 + 弹出卡片**：每条待办行悬停出现「详情」按钮，点击弹出卡片（覆盖竖栏的模态层）显示并编辑**标题 + 描述**——新增 `TodoItem.detail` 字段（≤20000，`add`/`edit` 动作可携带，旧数据缺省视为空串，存储域 version 不变无需迁移）；卡片底部显示创建/更新时间与完成/置顶状态；保存走 `edit`（同时落 `detail`），取消/点遮罩/ESC 关闭；行内双击编辑（仅 text）不受影响，撤销删除恢复完整对象（含 detail）。
 > 0.4.18 —— **常驻会话设置持久化 + cwd 固定临时目录**：状态文件 `~/.dsh/session-card.json` 持久化 `{sessionId, presetId, provider, model, effort}`——⚙ 选择的预设/模型/思考等级在清空会话、重启 DSH 后都会应用到新的常驻会话（`agents.create`/`agents.resume` 的 `agentOptions` 与预设挂载都用持久化值；持久化模型不可用时回退默认选择重试一次）；**移除 ⚙「工作目录（cwd）」设置与 `scard-select-cwd` 动作**，cwd 不再持久化，每次新会话恒用系统临时目录 `{tmpdir}/dsh-notes-resident`（空白旧会话若 header.cwd 不一致仍自动重建落到临时目录）。
 > 0.4.17 —— 小计**默认落在当前工作区**：tab 初始值按工作区解析结果（有工作区 → 工作区 tab，无 → 全局）；`useEffect` 跟踪 `workspaceId` 变化——切换工作区后自动切到新工作区的小计（而非停留在全局），解析不到工作区（如切到 stray 会话）时回全局；挂载早期工作区解析从 undefined 变为有值也会自动落到工作区。原型默认 tab 同步改为工作区。
 > 0.4.16 —— 卡片输出**瀑布流效果**：运行中轮询 800ms → 400ms（流式内容更连续）；流式输出尾部常显**闪烁光标**（不再只在纯文本降级时显示）；内容增长时若停留在底部则**自动跟随滚动**（用户上翻后不打断，发送后强制滚到底一次；与官方 ChatView 一致）；思考/工具阶段（尚无可见流式文本）显示官方 turnStatus 同款**流光「正在生成…」状态行**（品牌渐变 + background-clip 文字 + 1.8s shimmer）；新消息行轻微上浮淡入（0.18s，流式行 key 稳定不重复触发）；`prefers-reduced-motion` 下关闭动画。原型同步状态行演示。
@@ -58,7 +59,7 @@ dsh-notes 在 DSH Web 界面中提供**侧栏与对话区之间的常驻竖栏**
 | 清空会话 | 两段式确认；`workspaceRegistry.archiveSession` 归档 + 新建空白常驻会话（运行中拒绝）；客户端不自动导航 |
 | —— 小计（下半，原有） —— | |
 | Tab | 「全局」/「本工作区（工作区标题）」；无当前工作区（`recentWorkspaceId === undefined`）时隐藏工作区 tab；**默认落在当前工作区**（v0.4.17 起：首次加载有工作区即默认工作区 tab，切换工作区后自动回到新工作区的小计；无工作区时回全局），切换时各自独立读写 |
-| 待办区 | 分区标题行（标题 + 「共 X 项 · 未完成 Y」+「清空已完成」）+ 添加输入行 + 分点列表：勾选/取消（显式传 done，幂等）、双击行内编辑（Enter 保存 / Esc 取消 / 失焦保存，空文本忽略）、删除（行悬停出现）、置顶（📌，置顶项恒在顶部）、拖拽排序（Pointer Events，拖到置顶区自动置顶）、撤销删除（5 秒内「撤销」条，恢复原位置） |
+| 待办区 | 分区标题行（标题 + 「共 X 项 · 未完成 Y」+「清空已完成」）+ 添加输入行 + 分点列表：勾选/取消（显式传 done，幂等）、双击行内编辑（Enter 保存 / Esc 取消 / 失焦保存，空文本忽略）、**详情按钮（v0.4.19）**：悬停出现，点击弹出卡片编辑显示标题 + 描述（`detail` 字段，含创建/更新时间与完成/置顶状态）、删除（行悬停出现）、置顶（📌，置顶项恒在顶部）、拖拽排序（Pointer Events，拖到置顶区自动置顶）、撤销删除（5 秒内「撤销」条，恢复原位置） |
 | 随记区 | 分区标题行（标题 + 保存状态）+ 多行 textarea：自由文本，防抖 600ms 自动保存 + 失焦立即保存；清空 = 文本置空 |
 | 空/错状态 | 待办空列表提示；host 存储不可用时竖栏顶部错误条，UI 不崩溃 |
 | 主题 | 全部使用 `--dsw-alias-*` 语义令牌，明暗由 `body[data-ds-dark-theme]` 自动适配（见 §7） |
@@ -228,9 +229,10 @@ const title       = useWorkspaces((s) => s.items.find((w) => w.workspaceId === w
 ```ts
 interface TodoItem {
   id: string        // `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-  text: string
+  text: string      // 标题（≤500）
   done: boolean
   pinned: boolean
+  detail: string    // 描述/备注（v0.4.19 新增，≤20000；缺省 ''）
   createdAt: number // epoch ms
   updatedAt: number
 }
@@ -241,7 +243,7 @@ interface NoteScope {
 }
 ```
 
-存储域 `notes`，version `1`（**不变，无需迁移**）：
+存储域 `notes`，version `1`（**不变，无需迁移**；`detail` 字段随对象透传，旧数据缺省视为 `''`）：
 
 ```
 DomainSpec {
@@ -252,7 +254,7 @@ DomainSpec {
 }
 ```
 
-变更语义（与 v0.3 一致）：添加 `text.trim()` 为空忽略、追加尾部；编辑空文本忽略；勾选显式传 done（幂等）；置顶移到数组头部；`reorder {orderedIds}` 整体重排（未列出兜底追加）；清空已完成仅移除 done；`undo-delete` 恢复最近一次删除/清空到原位置（Host 内存 Map，上限 100 LRU，同作用域其他变更使其失效）；`set-memo` 整体替换。
+变更语义（与 v0.3 一致）：添加 `text.trim()` 为空忽略、追加尾部（`add` 可带 `detail`）；编辑空文本忽略（`edit` 可带 `detail`，缺省保持原描述不变）；勾选显式传 done（幂等）；置顶移到数组头部；`reorder {orderedIds}` 整体重排（未列出兜底追加）；清空已完成仅移除 done；`undo-delete` 恢复最近一次删除/清空到原位置（Host 内存 Map，上限 100 LRU，同作用域其他变更使其失效）；`set-memo` 整体替换。
 
 ### 5.2 常驻会话（新增）
 

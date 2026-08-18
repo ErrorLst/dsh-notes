@@ -36,6 +36,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const TODO_TEXT_MAX = 500
+const DETAIL_MAX = 20000
 const MEMO_MAX = 20000
 const ROUTE_PATH = '/api/dsh-notes'
 const UNDO_CAP = 100
@@ -66,6 +67,7 @@ function copyScope(scope) {
       text: item.text,
       done: item.done,
       pinned: item.pinned === true,
+      detail: typeof item.detail === 'string' ? item.detail : '',
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     })),
@@ -177,11 +179,12 @@ export function apply(ctx, config = {}) {
     })
   }
 
-  function pushTodo(todos, text) {
+  function pushTodo(todos, text, detail) {
     const trimmed = String(text).trim().slice(0, TODO_TEXT_MAX)
     if (trimmed === '') return todos
+    const trimmedDetail = typeof detail === 'string' ? detail.slice(0, DETAIL_MAX) : ''
     const now = Date.now()
-    const item = { id: `${now.toString(36)}-${Math.random().toString(36).slice(2, 10)}`, text: trimmed, done: false, pinned: false, createdAt: now, updatedAt: now }
+    const item = { id: `${now.toString(36)}-${Math.random().toString(36).slice(2, 10)}`, text: trimmed, done: false, pinned: false, ...(trimmedDetail === '' ? {} : { detail: trimmedDetail }), createdAt: now, updatedAt: now }
     return [...todos, item]
   }
 
@@ -195,7 +198,7 @@ export function apply(ctx, config = {}) {
       case 'add': {
         if (typeof body.text !== 'string') return Promise.resolve({ error: 'bad-args' })
         clearUndo(undoKey)
-        return mutate(scope, workspaceId, (current) => ({ ...current, todos: pushTodo(current.todos, body.text) }))
+        return mutate(scope, workspaceId, (current) => ({ ...current, todos: pushTodo(current.todos, body.text, typeof body.detail === 'string' ? body.detail : '') }))
       }
       case 'toggle': {
         if (typeof body.id !== 'string' || typeof body.done !== 'boolean') return Promise.resolve({ error: 'bad-args' })
@@ -212,9 +215,19 @@ export function apply(ctx, config = {}) {
         const text = body.text.trim().slice(0, TODO_TEXT_MAX)
         if (text === '') return Promise.resolve({ error: 'bad-args' })
         clearUndo(undoKey)
+        const hasDetail = typeof body.detail === 'string'
+        const detail = hasDetail ? body.detail.slice(0, DETAIL_MAX) : undefined
         return mutate(scope, workspaceId, (current) => ({
           ...current,
-          todos: current.todos.map((item) => (item.id === body.id ? { ...item, text, updatedAt: Date.now() } : item)),
+          todos: current.todos.map((item) => {
+            if (item.id !== body.id) return item
+            const next = { ...item, text, updatedAt: Date.now() }
+            if (hasDetail) {
+              if (detail === '') delete next.detail
+              else next.detail = detail
+            }
+            return next
+          }),
         }))
       }
       case 'delete': {

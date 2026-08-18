@@ -101,6 +101,8 @@ const ICON_GRIP =
   '<svg viewBox="0 0 10 16" fill="currentColor"><circle cx="2.5" cy="2.5" r="1.4"/><circle cx="7.5" cy="2.5" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13.5" r="1.4"/><circle cx="7.5" cy="13.5" r="1.4"/></svg>'
 const ICON_GEAR =
   '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="1.8"/><path d="M6 1.2v1.6M6 9.2v1.6M1.2 6h1.6M9.2 6h1.6M2.7 2.7l1.1 1.1M8.2 8.2l1.1 1.1M2.7 9.3l1.1-1.1M8.2 3.8l1.1-1.1"/></svg>'
+const ICON_DETAIL =
+  '<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 1.8h9v10.4h-9z"/><path d="M5 4.6h4M5 7h4M5 9.4h2.5"/></svg>'
 
 /* ---- 官方图标（dsh-client-ui-primitives 原版 SVG） ---- */
 const ICON_THINK =
@@ -874,6 +876,128 @@ button.ds-leading { cursor: pointer; }
 .np-item:hover .np-del { opacity: 1; }
 .np-del:hover { background: var(--dsw-alias-interactive-bg-hover-danger); color: var(--dsw-alias-state-error-primary); }
 .np-del svg { width: 12px; height: 12px; }
+.np-detail {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  color: var(--dsw-alias-label-tertiary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
+}
+.np-item:hover .np-detail { opacity: 1; }
+.np-detail:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-state-business-primary); }
+.np-detail svg { width: 12px; height: 12px; }
+
+/* 待办详情卡片（弹出编辑显示详细内容） */
+.np-detail-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: var(--dsw-alias-bg-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+.np-detail-card {
+  width: 100%;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--dsw-alias-bg-base);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+  box-shadow: var(--dsh-notes-shadow);
+  overflow: hidden;
+}
+.np-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  min-height: 36px;
+  padding: 6px 8px 6px 10px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+.np-detail-head .t { flex: 1; font-size: 12.5px; font-weight: 500; line-height: 20px; }
+.np-detail-close {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--dsw-alias-label-tertiary);
+  background: none;
+  border: none;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.np-detail-close:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.np-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.np-detail-field { display: flex; flex-direction: column; gap: 3px; }
+.np-detail-field label { font-size: 11px; color: var(--dsw-alias-label-tertiary); }
+.np-detail-title {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 7px;
+  background: var(--dsw-specific-input-major);
+  outline: none;
+  font-size: 12.5px;
+  color: var(--dsw-alias-label-primary);
+  user-select: text;
+  -webkit-user-select: text;
+}
+.np-detail-title:focus { border-color: var(--dsw-alias-state-business-primary); }
+.np-detail-textarea {
+  min-height: 110px;
+  resize: vertical;
+  padding: 6px 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 7px;
+  background: var(--dsw-specific-input-major);
+  outline: none;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--dsw-alias-label-primary);
+  user-select: text;
+  -webkit-user-select: text;
+}
+.np-detail-textarea:focus { border-color: var(--dsw-alias-state-business-primary); }
+.np-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 10.5px;
+  color: var(--dsw-alias-label-tertiary);
+}
+.np-detail-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: none;
+  padding: 0 10px 10px;
+}
+.np-detail-foot button {
+  height: 26px;
+  padding: 0 14px;
+  border-radius: 7px;
+  font-size: 12px;
+  cursor: pointer;
+  border: none;
+}
+.np-detail-foot .yes { background: var(--dsw-alias-state-business-primary); color: var(--dsw-alias-label-primary-foreground); }
+.np-detail-foot .no { border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-button-elevated-fill); color: var(--dsw-alias-label-primary); }
 .np-empty { padding: 18px 12px; text-align: center; font-size: 11.5px; color: var(--dsw-alias-label-tertiary); }
 
 .np-undo {
@@ -1465,6 +1589,7 @@ function NotesDock(props) {
     }
   }, [workspaceId])
   const [editing, setEditing] = useState(null) // { id, text }
+  const [detailDraft, setDetailDraft] = useState(null) // { id, text, detail } | null（待办详情卡片草稿）
   const [memoText, setMemoText] = useState('')
   const [memoStatus, setMemoStatus] = useState('')
   const [undoInfo, setUndoInfo] = useState(null) // { scope, count } | null
@@ -1866,6 +1991,37 @@ function NotesDock(props) {
     const text = edit.text.trim()
     if (text === '') return
     void post({ action: 'edit', scope: tab, workspaceId: workspaceArg, id: edit.id, text })
+  }
+
+  /* ---------- 待办详情卡片（弹出编辑显示详细内容） ---------- */
+  function openDetail(item) {
+    setDetailDraft({ id: item.id, text: item.text, detail: item.detail ?? '' })
+  }
+  function closeDetail() {
+    setDetailDraft(null)
+  }
+  function saveDetail() {
+    const draft = detailDraft
+    if (draft === null) return
+    const text = draft.text.trim()
+    if (text === '') return
+    setDetailDraft(null)
+    void post({ action: 'edit', scope: tab, workspaceId: workspaceArg, id: draft.id, text, detail: draft.detail })
+  }
+  function onDetailInput(event) {
+    if (detailDraft === null) return
+    setDetailDraft({ ...detailDraft, text: event.target.value })
+  }
+  function onDetailTextarea(event) {
+    if (detailDraft === null) return
+    setDetailDraft({ ...detailDraft, detail: event.target.value })
+  }
+
+  function formatTime(ms) {
+    if (typeof ms !== 'number' || !Number.isFinite(ms)) return '—'
+    const d = new Date(ms)
+    const pad = (n) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
   }
 
   /* =====================================================================
@@ -2348,6 +2504,13 @@ function NotesDock(props) {
           }),
           React.createElement('button', {
             type: 'button',
+            className: 'np-detail',
+            'data-tip': '详情',
+            onClick: () => openDetail(item),
+            dangerouslySetInnerHTML: { __html: ICON_DETAIL },
+          }),
+          React.createElement('button', {
+            type: 'button',
             className: 'np-del',
             'data-tip': '删除',
             onClick: () => deleteTodo(item),
@@ -2587,6 +2750,75 @@ function NotesDock(props) {
       onPointerCancel: onWidthPointerUp,
     }),
     React.createElement('div', { className: 'np-tip', ref: tipRef, hidden: true }),
+    detailDraft === null
+      ? null
+      : React.createElement(
+          'div',
+          {
+            className: 'np-detail-overlay',
+            onClick: (event) => { if (event.target === event.currentTarget) closeDetail() },
+          },
+          React.createElement(
+            'div',
+            { className: 'np-detail-card' },
+            React.createElement(
+              'div',
+              { className: 'np-detail-head' },
+              React.createElement('span', { className: 't' }, '待办详情'),
+              React.createElement('button', { type: 'button', className: 'np-detail-close', 'data-tip': '关闭', onClick: closeDetail }, '×'),
+            ),
+            React.createElement(
+              'div',
+              { className: 'np-detail-body' },
+              React.createElement(
+                'div',
+                { className: 'np-detail-field' },
+                React.createElement('label', null, '标题'),
+                React.createElement('input', {
+                  className: 'np-detail-title',
+                  maxLength: 500,
+                  value: detailDraft.text,
+                  autoFocus: true,
+                  onChange: onDetailInput,
+                  onKeyDown: (event) => { if (event.key === 'Escape') closeDetail() },
+                }),
+              ),
+              React.createElement(
+                'div',
+                { className: 'np-detail-field' },
+                React.createElement('label', null, '描述'),
+                React.createElement('textarea', {
+                  className: 'np-detail-textarea',
+                  placeholder: '描述 / 备注（可多行）…',
+                  maxLength: 20000,
+                  spellCheck: false,
+                  value: detailDraft.detail,
+                  onChange: onDetailTextarea,
+                  onKeyDown: (event) => { if (event.key === 'Escape') closeDetail() },
+                }),
+              ),
+              (() => {
+                const scope = scopeOf(data, tab)
+                const item = scope === null ? undefined : scope.todos.find((it) => it.id === detailDraft.id)
+                if (item === undefined) return null
+                return React.createElement(
+                  'div',
+                  { className: 'np-detail-meta' },
+                  React.createElement('span', null, `创建 ${formatTime(item.createdAt)}`),
+                  React.createElement('span', null, `更新 ${formatTime(item.updatedAt)}`),
+                  React.createElement('span', null, item.done ? '已完成' : '未完成'),
+                  item.pinned ? React.createElement('span', null, '已置顶') : null,
+                )
+              })(),
+            ),
+            React.createElement(
+              'div',
+              { className: 'np-detail-foot' },
+              React.createElement('button', { type: 'button', className: 'no', onClick: closeDetail }, '取消'),
+              React.createElement('button', { type: 'button', className: 'yes', onClick: saveDetail }, '保存'),
+            ),
+          ),
+        ),
   )
 }
 
