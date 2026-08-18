@@ -1939,6 +1939,11 @@ function NotesDock(props) {
   function onDockPointerDown() {
     hideTip()
   }
+  /* 折叠/展开切换后兜底隐藏提示（折叠/展开树根级子元素带 key，np-tip 按 key 复用，
+     不会被原地改造成 dock-resizer 而残留文字/坐标；这里再兜底一次） */
+  useLayoutEffect(() => {
+    hideTip()
+  }, [collapsed])
 
   /* ---------- 待办动作 ---------- */
   function addTodo() {
@@ -2380,12 +2385,12 @@ function NotesDock(props) {
       },
       React.createElement(
         'button',
-        { className: 'dock-collapsed', type: 'button', 'data-tip': '展开小记', onClick: expand },
+        { key: 'pill', className: 'dock-collapsed', type: 'button', 'data-tip': '展开小记', onClick: expand },
         React.createElement('span', null, '📝'),
         React.createElement('span', null, '小记'),
         React.createElement('span', { dangerouslySetInnerHTML: { __html: ICON_EXPAND } }),
       ),
-      React.createElement('div', { className: 'np-tip', ref: tipRef, hidden: true }),
+      React.createElement('div', { key: 'tip', className: 'np-tip', ref: tipRef, hidden: true }),
     )
   }
 
@@ -2685,7 +2690,7 @@ function NotesDock(props) {
     },
     React.createElement(
       'div',
-      { className: 'dock-body' },
+      { key: 'body', className: 'dock-body' },
       /* ===== 上半：常驻会话卡片 ===== */
       React.createElement(
         'section',
@@ -2978,6 +2983,7 @@ function NotesDock(props) {
       ),
     ),
     React.createElement('div', {
+      key: 'resizer',
       className: 'dock-resizer',
       'data-tip': '拖动调整竖栏宽度',
       onPointerDown: onWidthPointerDown,
@@ -2985,7 +2991,7 @@ function NotesDock(props) {
       onPointerUp: onWidthPointerUp,
       onPointerCancel: onWidthPointerUp,
     }),
-    React.createElement('div', { className: 'np-tip', ref: tipRef, hidden: true }),
+    React.createElement('div', { key: 'tip', className: 'np-tip', ref: tipRef, hidden: true }),
   )
 }
 
