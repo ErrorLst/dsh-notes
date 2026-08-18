@@ -3,6 +3,7 @@
 > 版本：0.4 · 状态：**已实现（M1 融合完成 + transcript 分级折叠，待重启 DSH 后验收）** · 关联原型：`prototype/index.html`
 >
 > 变更记录：
+> 0.4.17 —— 小计**默认落在当前工作区**：tab 初始值按工作区解析结果（有工作区 → 工作区 tab，无 → 全局）；`useEffect` 跟踪 `workspaceId` 变化——切换工作区后自动切到新工作区的小计（而非停留在全局），解析不到工作区（如切到 stray 会话）时回全局；挂载早期工作区解析从 undefined 变为有值也会自动落到工作区。原型默认 tab 同步改为工作区。
 > 0.4.16 —— 卡片输出**瀑布流效果**：运行中轮询 800ms → 400ms（流式内容更连续）；流式输出尾部常显**闪烁光标**（不再只在纯文本降级时显示）；内容增长时若停留在底部则**自动跟随滚动**（用户上翻后不打断，发送后强制滚到底一次；与官方 ChatView 一致）；思考/工具阶段（尚无可见流式文本）显示官方 turnStatus 同款**流光「正在生成…」状态行**（品牌渐变 + background-clip 文字 + 1.8s shimmer）；新消息行轻微上浮淡入（0.18s，流式行 key 稳定不重复触发）；`prefers-reduced-motion` 下关闭动画。原型同步状态行演示。
 > 0.4.15 —— **修复发送后误报「发送失败」**：`session.prompt` 的 wire 响应是 `{ok:true, value:{accepted:true}}`——`accepted` 在 `value` 内层，客户端旧判断读顶层 `result.accepted` 恒为 `undefined` → 每次发送成功也走失败分支显示「发送失败」，直到下一次轮询 `scard-chat-state` 成功才清掉（表现为「先显示发送失败、一会儿内容出现后消失」）。修复：改判 `result.ok === true && result.value?.accepted === true`。
 > 0.4.14 —— 卡片模型输出支持 **Markdown 渲染**：复用官方 `dsh-client-ui-primitives` 的 `MarkdownText`（GFM + TeX 数学 + 安全链接 + 流式增量渲染，代码块带复制按钮）；加载失败降级纯文本。原型加精简 md 演示渲染器。
@@ -55,7 +56,7 @@ dsh-notes 在 DSH Web 界面中提供**侧栏与对话区之间的常驻竖栏**
 | 选择模型 / 思考等级 | ⚙ 弹窗内 · `llm` 模型目录（provider 分组）+ 当前模型 `reasoning.efforts`（含「默认」）；经 `agent/request` 全局瀑布监听（untagged、按会话 id 过滤）覆盖 provider/model/reasoningEffort |
 | 清空会话 | 两段式确认；`workspaceRegistry.archiveSession` 归档 + 新建空白常驻会话（运行中拒绝）；客户端不自动导航 |
 | —— 小计（下半，原有） —— | |
-| Tab | 「全局」/「本工作区（工作区标题）」；无当前工作区（`recentWorkspaceId === undefined`）时隐藏工作区 tab；切换时各自独立读写 |
+| Tab | 「全局」/「本工作区（工作区标题）」；无当前工作区（`recentWorkspaceId === undefined`）时隐藏工作区 tab；**默认落在当前工作区**（v0.4.17 起：首次加载有工作区即默认工作区 tab，切换工作区后自动回到新工作区的小计；无工作区时回全局），切换时各自独立读写 |
 | 待办区 | 分区标题行（标题 + 「共 X 项 · 未完成 Y」+「清空已完成」）+ 添加输入行 + 分点列表：勾选/取消（显式传 done，幂等）、双击行内编辑（Enter 保存 / Esc 取消 / 失焦保存，空文本忽略）、删除（行悬停出现）、置顶（📌，置顶项恒在顶部）、拖拽排序（Pointer Events，拖到置顶区自动置顶）、撤销删除（5 秒内「撤销」条，恢复原位置） |
 | 随记区 | 分区标题行（标题 + 保存状态）+ 多行 textarea：自由文本，防抖 600ms 自动保存 + 失焦立即保存；清空 = 文本置空 |
 | 空/错状态 | 待办空列表提示；host 存储不可用时竖栏顶部错误条，UI 不崩溃 |

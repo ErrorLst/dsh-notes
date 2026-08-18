@@ -1456,7 +1456,15 @@ function NotesDock(props) {
   })
   const [data, setData] = useState({ global: { todos: [], memo: '' }, workspace: null })
   const [error, setError] = useState(null)
-  const [tab, setTab] = useState('global')
+  // 小计默认落在当前工作区（而非全局）；无工作区时仅全局可用
+  const [tab, setTab] = useState(workspaceId !== undefined ? 'workspace' : 'global')
+  const lastWorkspaceRef = useRef(workspaceId)
+  useEffect(() => {
+    if (lastWorkspaceRef.current !== workspaceId) {
+      lastWorkspaceRef.current = workspaceId
+      setTab(workspaceId !== undefined ? 'workspace' : 'global')
+    }
+  }, [workspaceId])
   const [editing, setEditing] = useState(null) // { id, text }
   const [memoText, setMemoText] = useState('')
   const [memoStatus, setMemoStatus] = useState('')

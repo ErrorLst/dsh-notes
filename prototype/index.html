@@ -1735,7 +1735,7 @@ function defaults() {
       messages: DEFAULT_DATA.card.messages.map((m) => Object.assign({}, m)),
     },
     selected: 'laptop',
-    tab: 'global',
+    tab: 'workspace', // 小计默认落在当前工作区（而非全局）；真实实现切换工作区时同样自动回到工作区小计
     collapsed: false,
     rail: false,
     dark: false,
