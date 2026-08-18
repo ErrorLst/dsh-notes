@@ -912,7 +912,6 @@ button.ds-leading { cursor: pointer; }
   white-space: nowrap;
   overflow: hidden;
 }
-.sc-history-count { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 10.5px; }
 .sc-history-chev { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 1; }
 
 /* 历史轮次记录卡片（覆盖常驻会话区域，毛玻璃） */
@@ -2252,7 +2251,6 @@ function renderCardMessages() {
       html += '<div class="sc-history" data-history="' + i + '">'
         + '<span class="sc-history-label">对话 ' + (i + 1) + '</span>'
         + '<span class="sc-history-preview">' + (shown ? esc(shown) : '（无标题）') + '</span>'
-        + '<span class="sc-history-count">' + turn.rows.length + ' 条</span>'
         + '<span class="sc-history-chev">›</span>'
         + '</div>'
     }

@@ -387,7 +387,6 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   white-space: nowrap;
   overflow: hidden;
 }
-.sc-history-count { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 10.5px; }
 .sc-history-chev { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 1; }
 
 /* 历史轮次记录卡片（覆盖常驻会话区域，毛玻璃） */
@@ -2496,7 +2495,6 @@ function NotesDock(props) {
           },
             React.createElement('span', { className: 'sc-history-label' }, `对话 ${i + 1}`),
             React.createElement('span', { className: 'sc-history-preview' }, shown === '' ? '（无标题）' : shown),
-            React.createElement('span', { className: 'sc-history-count' }, `${turn.rows.length} 条`),
             React.createElement('span', { className: 'sc-history-chev' }, '›'),
           ),
         )
