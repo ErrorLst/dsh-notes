@@ -1917,7 +1917,7 @@ function NotesDock(props) {
     }
     try {
       const result = await binding.session.prompt([{ type: 'text', text }], 'queue')
-      if (result !== undefined && result.accepted !== true) {
+      if (result !== undefined && (result.ok !== true || result.value?.accepted !== true)) {
         setCardError(result?.error?.message ?? '发送失败')
       } else {
         setCardError(null)
