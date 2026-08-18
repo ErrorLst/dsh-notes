@@ -3,6 +3,7 @@
 > 版本：0.4 · 状态：**已实现（M1 融合完成 + transcript 分级折叠，待重启 DSH 后验收）** · 关联原型：`prototype/index.html`
 >
 > 变更记录：
+> 0.4.21 —— 待办详情卡片遮罩改为**毛玻璃**：`background` 置透明 + `backdrop-filter: blur(6px)`（含 `-webkit-` 前缀），不再用纯色遮罩。原型同步。
 > 0.4.20 —— 待办详情卡片**只覆盖小计区域**：卡片模态层从竖栏根移入 `.np-section` 内部（`position: relative` 锚定），`inset: 0` 只盖住下半小计区，**不遮挡常驻会话**（上半会话卡片保持可见可交互）；卡片样式不变。原型同步。
 > 0.4.19 —— 待办**详情按钮 + 弹出卡片**：每条待办行悬停出现「详情」按钮，点击弹出卡片（覆盖竖栏的模态层）显示并编辑**标题 + 描述**——新增 `TodoItem.detail` 字段（≤20000，`add`/`edit` 动作可携带，旧数据缺省视为空串，存储域 version 不变无需迁移）；卡片底部显示创建/更新时间与完成/置顶状态；保存走 `edit`（同时落 `detail`），取消/点遮罩/ESC 关闭；行内双击编辑（仅 text）不受影响，撤销删除恢复完整对象（含 detail）。
 > 0.4.18 —— **常驻会话设置持久化 + cwd 固定临时目录**：状态文件 `~/.dsh/session-card.json` 持久化 `{sessionId, presetId, provider, model, effort}`——⚙ 选择的预设/模型/思考等级在清空会话、重启 DSH 后都会应用到新的常驻会话（`agents.create`/`agents.resume` 的 `agentOptions` 与预设挂载都用持久化值；持久化模型不可用时回退默认选择重试一次）；**移除 ⚙「工作目录（cwd）」设置与 `scard-select-cwd` 动作**，cwd 不再持久化，每次新会话恒用系统临时目录 `{tmpdir}/dsh-notes-resident`（空白旧会话若 header.cwd 不一致仍自动重建落到临时目录）。
