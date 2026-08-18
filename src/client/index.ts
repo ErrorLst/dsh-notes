@@ -1922,15 +1922,22 @@ function NotesDock(props) {
   }
 
   /* ---------- 折叠 ---------- */
+  /* 折叠/展开会卸载触发提示的按钮（mouseout 随元素消失），提示框会卡在旧位置——
+     必须先隐藏；pointerdown 兜底覆盖一切会卸载按钮的点击 */
   function collapse() {
+    hideTip()
     saveMemoNow()
     setCollapsed(true)
     try { localStorage.setItem(COLLAPSED_KEY, '1') } catch { /* ignore */ }
   }
   function expand() {
+    hideTip()
     setCollapsed(false)
     try { localStorage.setItem(COLLAPSED_KEY, '0') } catch { /* ignore */ }
     requestAnimationFrame(() => { inputRef.current?.focus() })
+  }
+  function onDockPointerDown() {
+    hideTip()
   }
 
   /* ---------- 待办动作 ---------- */
@@ -2369,6 +2376,7 @@ function NotesDock(props) {
         onMouseOver: onTipOver,
         onMouseMove: onTipMove,
         onMouseOut: onTipOut,
+        onPointerDown: onDockPointerDown,
       },
       React.createElement(
         'button',
@@ -2673,6 +2681,7 @@ function NotesDock(props) {
       onMouseOver: onTipOver,
       onMouseMove: onTipMove,
       onMouseOut: onTipOut,
+      onPointerDown: onDockPointerDown,
     },
     React.createElement(
       'div',
