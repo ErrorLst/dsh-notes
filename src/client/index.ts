@@ -22,16 +22,56 @@
 const React = require('react')
 const { useState, useEffect, useLayoutEffect, useRef, useCallback } = React
 
+/* 内置 GFM 渲染器（marked 源码相对导入 → 随 bundle 内联；原始 HTML 转义为
+ * 字面文本，链接/图片仅允许 http(s)/mailto） */
+import { marked as markedParseFn, Renderer as MarkedRenderer } from '../../node_modules/marked/lib/marked.esm.js'
+
 /* 官方 Markdown 渲染（dsh-client-ui-primitives：GFM + TeX 数学 + 安全链接 +
- * 流式渲染；加载失败时降级为纯文本） */
+ * 流式渲染；解析失败时降级到内置 marked 渲染器；再失败为纯文本） */
 let MarkdownText = null
 try {
   const primitives = require('@deepseek-ai/dsh-client-ui-primitives')
   if (primitives !== null && typeof primitives === 'object' && typeof primitives.MarkdownText === 'function') {
     MarkdownText = primitives.MarkdownText
   }
-} catch { /* 降级 */ }
+} catch (error) {
+  console.warn('[dsh-notes] 官方 MarkdownText 不可用，使用内置渲染器', error)
+}
 const MD_LABELS = { copyLabel: '复制', copiedLabel: '已复制' }
+
+/* 内置 GFM 渲染器（marked，随 bundle 内联；原始 HTML 转义为字面文本，
+ * 链接/图片仅允许 http(s)/mailto；marked v18 renderer 收 token 对象） */
+let markedParse = null
+try {
+  if (typeof markedParseFn === 'function' && typeof MarkedRenderer === 'function') {
+    const escapeHtml = (value) => String(value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+    markedParse = (text) => {
+      const renderer = new MarkedRenderer()
+      renderer.html = function (token) {
+        return escapeHtml((token && (token.raw ?? token.text)) ?? '')
+      }
+      renderer.link = function (token) {
+        const href = token && token.href
+        const label = this.parser && typeof this.parser.parseInline === 'function'
+          ? this.parser.parseInline(token.tokens)
+          : escapeHtml((token && (token.text ?? token.raw)) ?? '')
+        if (typeof href === 'string' && /^(https?:|mailto:)/i.test(href)) {
+          return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${label}</a>`
+        }
+        return escapeHtml((token && token.raw) ?? '')
+      }
+      renderer.image = function (token) {
+        const href = token && token.href
+        if (typeof href === 'string' && /^https?:/i.test(href)) {
+          return `<img src="${escapeHtml(href)}" alt="${escapeHtml((token && (token.text ?? '')) ?? '')}" />`
+        }
+        return escapeHtml((token && token.raw) ?? '')
+      }
+      return markedParseFn(text, { gfm: true, breaks: true, renderer })
+    }
+  }
+} catch { /* 无内置渲染 */ }
 
 const STYLE_TAG_ID = 'dsh-notes-dock-style'
 const COLLAPSED_KEY = 'dsh-notes.collapsed'
@@ -216,6 +256,57 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   min-width: 0;
 }
 .sc-msg.assistant .bubble .sc-plain { white-space: pre-wrap; word-break: break-word; }
+
+/* 内置 Markdown 渲染排版（官方 MarkdownText 不可用时的兜底） */
+.dsh-notes-md {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--dsw-alias-label-primary);
+  overflow-wrap: anywhere;
+}
+.dsh-notes-md > :first-child { margin-top: 0; }
+.dsh-notes-md > :last-child { margin-bottom: 0; }
+.dsh-notes-md p { margin: 0 0 6px; }
+.dsh-notes-md h1, .dsh-notes-md h2, .dsh-notes-md h3, .dsh-notes-md h4, .dsh-notes-md h5, .dsh-notes-md h6 {
+  margin: 8px 0 4px;
+  line-height: 1.35;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+.dsh-notes-md h1 { font-size: 15px; }
+.dsh-notes-md h2 { font-size: 14px; }
+.dsh-notes-md h3 { font-size: 13px; }
+.dsh-notes-md h4, .dsh-notes-md h5, .dsh-notes-md h6 { font-size: 12.5px; }
+.dsh-notes-md ul, .dsh-notes-md ol { margin: 0 0 6px; padding-left: 18px; }
+.dsh-notes-md li { margin: 1px 0; }
+.dsh-notes-md code {
+  font-family: var(--ds-font-family-code, monospace);
+  font-size: 11px;
+  background: var(--dsw-alias-bg-overlay);
+  border-radius: 4px;
+  padding: 1px 4px;
+  color: var(--dsw-alias-label-secondary);
+}
+.dsh-notes-md pre {
+  margin: 4px 0 8px;
+  padding: 8px 10px;
+  background: var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-overlay));
+  border-radius: 8px;
+  overflow-x: auto;
+}
+.dsh-notes-md pre code { background: none; padding: 0; font-size: 11px; line-height: 1.55; }
+.dsh-notes-md blockquote {
+  margin: 4px 0 8px;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-secondary);
+}
+.dsh-notes-md a { color: var(--dsw-alias-state-business-primary); text-decoration: underline; text-underline-offset: 2px; }
+.dsh-notes-md table { border-collapse: collapse; margin: 4px 0 8px; max-width: 100%; display: block; overflow-x: auto; }
+.dsh-notes-md th, .dsh-notes-md td { border: 1px solid var(--dsw-alias-border-l2); padding: 3px 8px; font-size: 12px; }
+.dsh-notes-md th { background: var(--dsw-alias-bg-layer-2); font-weight: 600; }
+.dsh-notes-md hr { border: none; border-top: 1px solid var(--dsw-alias-border-l2); margin: 8px 0; }
+.dsh-notes-md img { max-width: 100%; border-radius: 6px; }
 .sc-msg.tool {
   align-self: center;
   font-size: 10.5px;
@@ -2028,6 +2119,20 @@ function NotesDock(props) {
 
   /* ---- 会话卡片：消息列表（简化显示：只渲染用户输入 / 模型输出 / 回合错误；
        上下文注入、思考、工具调用行由 Host 折叠但不再显示，随时可恢复） ---- */
+
+  /* 模型输出内容：官方 MarkdownText → 内置 marked → 纯文本 */
+  function assistantContent(text, streaming) {
+    if (MarkdownText !== null) {
+      return React.createElement(MarkdownText, { text, streaming: streaming === true, codeLabels: MD_LABELS })
+    }
+    if (markedParse !== null) {
+      try {
+        return React.createElement('div', { className: 'dsh-notes-md', dangerouslySetInnerHTML: { __html: markedParse(text) } })
+      } catch { /* fall through */ }
+    }
+    return React.createElement('span', { className: 'sc-plain' }, text)
+  }
+
   function rowElement(row, streaming) {
     const key = streaming === true ? `${row.id}-live` : row.id
     if (row.kind === 'turn-error') {
@@ -2056,11 +2161,7 @@ function NotesDock(props) {
       } else if (message.kind === 'assistant') {
         chatRows.push(
           React.createElement('div', { key: message.id, className: 'sc-msg assistant' },
-            React.createElement('div', { className: 'bubble' },
-              MarkdownText !== null
-                ? React.createElement(MarkdownText, { text: message.text, streaming: false, codeLabels: MD_LABELS })
-                : React.createElement('span', { className: 'sc-plain' }, message.text),
-            ),
+            React.createElement('div', { className: 'bubble' }, assistantContent(message.text, false)),
           ),
         )
       } else {
@@ -2077,12 +2178,10 @@ function NotesDock(props) {
             chatRows.push(
               React.createElement('div', { key: `${partial.id}-stream`, className: 'sc-msg assistant' },
                 React.createElement('div', { className: 'bubble' },
-                  MarkdownText !== null
-                    ? React.createElement(MarkdownText, { text: partial.text, streaming: true, codeLabels: MD_LABELS })
-                    : React.createElement(React.Fragment, null,
-                        React.createElement('span', { className: 'sc-plain' }, partial.text),
-                        React.createElement('span', { className: 'cursor' }),
-                      ),
+                  assistantContent(partial.text, true),
+                  MarkdownText === null && markedParse === null
+                    ? React.createElement('span', { className: 'cursor' })
+                    : null,
                 ),
               ),
             )
