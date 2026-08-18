@@ -13,10 +13,12 @@
 //      小计动作：add / toggle / edit / delete / clear-done / set-memo
 //               / pin（置顶）/ reorder（拖拽排序）/ undo-delete（撤销上次删除）
 //      会话卡片动作（v0.4 融合 dsh-session-card）：scard-state / scard-chat-state
-//               / scard-select-preset / scard-select-model / scard-select-cwd / scard-clear
-//   3. 会话卡片：管理插件专属「常驻会话」（未分组、无 cwd）——
+//               / scard-select-preset / scard-select-model / scard-clear
+//   3. 会话卡片：管理插件专属「常驻会话」（未分组；cwd 恒为临时目录）——
 //      - 状态文件 ~/.dsh/session-card.json（沿用旧 dsh-session-card 路径，
-//        已建会话无缝复用；fs/sandboxPolicy 缺失时降级为仅内存运行）
+//        已建会话无缝复用；fs/sandboxPolicy 缺失时降级为仅内存运行）；
+//        v0.4.18 起持久化 { sessionId, presetId, provider, model, effort }
+//        （预设/模型/思考等级），不再持久化 cwd —— 每次新会话都在临时目录
 //      - agent/request 全局瀑布监听（untagged，按会话 id 过滤）应用模型覆盖
 //      - session/event 监听仅递增 revision（按会话 id 过滤，不缓存全文）
 //      - chat-state 折叠 agent.session.events 为紧凑 transcript（叶字段 JSON）
@@ -433,44 +435,38 @@ function setupScard(ctx) {
       if (typeof parsed.sessionId !== 'string' || parsed.sessionId === '') return undefined
       return {
         sessionId: parsed.sessionId,
-        cwd: typeof parsed.cwd === 'string' && parsed.cwd !== '' ? parsed.cwd : null,
+        presetId: typeof parsed.presetId === 'string' && parsed.presetId !== '' ? parsed.presetId : undefined,
+        provider: typeof parsed.provider === 'string' && parsed.provider !== '' ? parsed.provider : undefined,
+        model: typeof parsed.model === 'string' && parsed.model !== '' ? parsed.model : undefined,
+        effort: typeof parsed.effort === 'string' && parsed.effort !== '' ? parsed.effort : undefined,
       }
     } catch {
       return undefined
     }
   }
 
-  async function writeStateFile(sessionId, cwd) {
+  /** 持久化常驻会话设置（预设/模型/思考等级）；cwd 不持久化。 */
+  async function writeStateFile(sessionId, settings) {
     if (stateFile === null || fs === undefined) return
     try {
-      await fs.writeText(stateFile, JSON.stringify({ sessionId, ...(cwd == null ? {} : { cwd }) }))
+      const record = { sessionId }
+      if (settings?.presetId !== undefined) record.presetId = settings.presetId
+      if (settings?.provider !== undefined) record.provider = settings.provider
+      if (settings?.model !== undefined) record.model = settings.model
+      if (settings?.effort !== undefined) record.effort = settings.effort
+      await fs.writeText(stateFile, JSON.stringify(record))
     } catch (error) {
       ctx.logger.warn(`[dsh-notes] failed to write session-card state: ${String(error)}`)
     }
   }
 
-  /* ---- 常驻会话工作目录（cwd）----
-   * 配置来源：状态文件 cwd 字段；未配置或路径无效 → 系统临时目录下的
-   * dsh-notes-resident 子目录。cwd 在会话创建时写入 header（工具与
-   * {{cwd}} 提示词变量都读 header.cwd，无法事后修改）。 */
+  /* ---- 常驻会话工作目录：恒为系统临时目录下的 dsh-notes-resident（不可配置） ----
+   * cwd 在会话创建时写入 header（工具与 {{cwd}} 提示词变量都读 header.cwd，
+   * 无法事后修改）；每次新会话都在临时目录。 */
   const residentTempDir = (() => {
     try { return join(tmpdir(), RESIDENT_TMP_SUBDIR) } catch { return null }
   })()
-  let stateCwd = null // 用户配置的 cwd（null = 用临时目录）
-  let effectiveCwdCache = null // 最近一次解析的有效 cwd
-
-  function isAbsolutePath(value) {
-    return /^[a-zA-Z]:[\\/]/.test(value) || /^\\\\/.test(value) || /^\//.test(value)
-  }
-
-  async function effectiveCwdOf(configured) {
-    if (typeof configured === 'string' && configured !== '' && isAbsolutePath(configured) && fs !== undefined) {
-      try {
-        const target = await fs.resolve(configured, {})
-        const info = await fs.stat(target)
-        if (info !== undefined && typeof info.isDirectory === 'function' && info.isDirectory()) return configured
-      } catch { /* 无效 → 回退临时目录 */ }
-    }
+  function residentCwd() {
     if (residentTempDir !== null) return residentTempDir
     try {
       if (sandboxPolicy !== undefined && sandboxPolicy.workspaceRoot !== undefined) return String(sandboxPolicy.workspaceRoot)
@@ -478,15 +474,13 @@ function setupScard(ctx) {
     return undefined
   }
 
-  async function refreshEffectiveCwd() {
-    effectiveCwdCache = await effectiveCwdOf(stateCwd)
-  }
-
   /* ---- 运行态 ---- */
   const overrides = new Map() // sessionId -> { provider, model, effort? }
   const revisions = new Map() // sessionId -> number（仅递增计数）
   const presetChains = new Map() // sessionId -> promise（预设切换串行化）
   let residentPromise = null // ensureResident 单飞
+  /** 常驻会话持久化设置（读状态文件获得；scard-select-preset/model 更新并落盘） */
+  let residentSettings = {}
 
   /* ---- 全局监听（untagged：所有 agent 作用域分发都可收听，按 id 过滤） ---- */
   ctx.on('agent/request', async (payload, next) => {
@@ -520,16 +514,17 @@ function setupScard(ctx) {
 
   /** 常驻会话 setup：cwd 变量兜底 + 挂载预设（新建/恢复共用）。 */
   async function mountResidentSetup(agentCtx, presetId) {
-    if (effectiveCwdCache !== null) {
+    const cwd = residentCwd()
+    if (cwd !== null && cwd !== undefined) {
       try {
         const systemPrompt = agentCtx.get('systemPrompt')
         if (systemPrompt !== undefined && typeof systemPrompt.variable === 'function') {
           systemPrompt.variable('cwd', (context) => {
             try {
-              const cwd = context?.agent?.session?.header?.cwd
-              if (typeof cwd === 'string' && cwd !== '') return cwd
+              const headerCwd = context?.agent?.session?.header?.cwd
+              if (typeof headerCwd === 'string' && headerCwd !== '') return headerCwd
             } catch { /* ignore */ }
-            return effectiveCwdCache
+            return cwd
           })
         }
       } catch (error) {
@@ -554,25 +549,53 @@ function setupScard(ctx) {
     return undefined
   }
 
+  /** 持久化设置折叠为 agentOptions（预设/模型/思考等级；无则 undefined）。 */
+  function persistedSelection() {
+    if (typeof residentSettings.provider === 'string' && residentSettings.provider !== ''
+      && typeof residentSettings.model === 'string' && residentSettings.model !== '') {
+      return {
+        provider: residentSettings.provider,
+        model: residentSettings.model,
+        ...(residentSettings.effort === undefined ? {} : { reasoningEffort: residentSettings.effort }),
+      }
+    }
+    return undefined
+  }
+
   async function createResident() {
     const sessionId = 'sesscard-' + Math.random().toString(36).slice(2, 10)
-    const selection = defaultSelection()
-    const cwd = await effectiveCwdOf(stateCwd)
-    const handle = await agents.create({
-      sessionId,
-      ...(selection === undefined ? {} : { agentOptions: selection }),
-      meta: { cwd }, // 未配置/无效 → 临时目录（工具与 {{cwd}} 都读 header.cwd）
-      setup: async (agentCtx) => {
-        await mountResidentSetup(agentCtx, undefined)
-      },
-    })
+    const cwd = residentCwd()
+    const selection = persistedSelection() ?? defaultSelection()
+    const presetId = typeof residentSettings.presetId === 'string' && residentSettings.presetId !== '' ? residentSettings.presetId : undefined
+    let handle
+    try {
+      handle = await agents.create({
+        sessionId,
+        ...(selection === undefined ? {} : { agentOptions: selection }),
+        meta: { cwd }, // 恒为临时目录（工具与 {{cwd}} 都读 header.cwd）
+        setup: async (agentCtx) => {
+          await mountResidentSetup(agentCtx, presetId)
+        },
+      })
+    } catch (error) {
+      // 持久化的模型可能已不可用：回退默认选择重试一次
+      ctx.logger.warn(`[dsh-notes] resident create with persisted selection failed (${String(error?.message ?? error)}), retrying with default`)
+      handle = await agents.create({
+        sessionId,
+        ...(defaultSelection() === undefined ? {} : { agentOptions: defaultSelection() }),
+        meta: { cwd },
+        setup: async (agentCtx) => {
+          await mountResidentSetup(agentCtx, undefined)
+        },
+      })
+    }
     const agent = handle.agent
     try {
       if (sessionTitle !== undefined) await sessionTitle.rename(agent.session, '常驻会话')
     } catch (error) {
       ctx.logger.warn(`[dsh-notes] rename resident failed: ${String(error)}`)
     }
-    await writeStateFile(sessionId, stateCwd)
+    await writeStateFile(sessionId, residentSettings)
     return sessionId
   }
 
@@ -596,13 +619,14 @@ function setupScard(ctx) {
   async function resumeAgent(id) {
     const existing = agents.get(id)
     if (existing !== undefined) return existing
-    const selection = defaultSelection()
-    const presetId = await foldedPresetFromPersistence(id)
+    const selection = persistedSelection() ?? defaultSelection()
+    let presetId = typeof residentSettings.presetId === 'string' && residentSettings.presetId !== '' ? residentSettings.presetId : undefined
+    presetId ??= await foldedPresetFromPersistence(id)
     const handle = await agents.resume({
       resumeSessionId: id,
       ...(selection === undefined ? {} : { agentOptions: selection }),
       setup: async (agentCtx) => {
-        await mountResidentSetup(agentCtx, presetId ?? undefined)
+        await mountResidentSetup(agentCtx, presetId)
       },
     })
     return handle.agent
@@ -612,8 +636,12 @@ function setupScard(ctx) {
   function ensureResident() {
     residentPromise ??= (async () => {
       const state = await readStateFile()
-      stateCwd = state?.cwd ?? null
-      await refreshEffectiveCwd()
+      residentSettings = {
+        ...(state?.presetId === undefined ? {} : { presetId: state.presetId }),
+        ...(state?.provider === undefined ? {} : { provider: state.provider }),
+        ...(state?.model === undefined ? {} : { model: state.model }),
+        ...(state?.effort === undefined ? {} : { effort: state.effort }),
+      }
       let id = state?.sessionId
       if (id !== undefined && sessionPersistence !== undefined) {
         try {
@@ -629,9 +657,9 @@ function setupScard(ctx) {
       } else {
         try {
           const agent = await resumeAgent(id) // 冷会话立即恢复（卡片可能马上发送首条消息）
-          // 会话 cwd 与当前配置不一致且会话仍空白 → 重建（配置/默认临时目录立即生效）
+          // 会话 cwd 与当前策略（恒为临时目录）不一致且会话仍空白 → 重建
           const blank = agent !== undefined && !agent.session.events.some((ev) => ev.type === 'turn/start')
-          if (blank && effectiveCwdCache !== null && agent.session.header?.cwd !== effectiveCwdCache) {
+          if (blank && residentCwd() !== null && residentCwd() !== undefined && agent.session.header?.cwd !== residentCwd()) {
             try {
               if (workspaceRegistry !== undefined) await workspaceRegistry.archiveSession(id)
             } catch (error) {
@@ -1079,8 +1107,6 @@ function setupScard(ctx) {
     } catch { /* ignore */ }
     presetId ??= foldedPresetOf(session)
     const [catalog, presets] = await Promise.all([buildCatalog(), roster()])
-    await refreshEffectiveCwd()
-    const cwd = effectiveCwdCache
     return {
       ok: true,
       scard: {
@@ -1093,11 +1119,6 @@ function setupScard(ctx) {
         presets,
         model: currentModelOf(id, agent),
         catalog,
-        cwd: {
-          configured: stateCwd,
-          effective: cwd,
-          fallback: !(typeof stateCwd === 'string' && stateCwd !== '' && cwd === stateCwd),
-        },
       },
     }
   }
@@ -1140,6 +1161,8 @@ function setupScard(ctx) {
       } catch (error) {
         ctx.logger.warn(`[dsh-notes] append agent-preset/selected failed: ${String(error)}`)
       }
+      residentSettings.presetId = presetId
+      await writeStateFile(id, residentSettings)
       return { ok: true, presetId }
     })
     presetChains.set(id, run.then(() => {}, () => {}))
@@ -1159,6 +1182,11 @@ function setupScard(ctx) {
       return { ok: false, error: { code: 'model-unavailable', message: String(error?.message ?? error) } }
     }
     overrides.set(id, { provider, model, ...(effort === undefined ? {} : { effort }) })
+    residentSettings.provider = provider
+    residentSettings.model = model
+    if (effort === undefined) delete residentSettings.effort
+    else residentSettings.effort = effort
+    await writeStateFile(id, residentSettings)
     if (agentDefaultModel !== undefined && typeof agentDefaultModel.saveSelection === 'function') {
       try {
         await agentDefaultModel.saveSelection({ provider, model, ...(effort === undefined ? {} : { reasoningEffort: effort }) })
@@ -1189,45 +1217,6 @@ function setupScard(ctx) {
     return { ok: true, sessionId: newId }
   }
 
-  /** 设置常驻会话工作目录：空白会话立即重建生效；已开始的会话在清空后生效。 */
-  async function scardSelectCwd(body) {
-    const id = await ensureResident()
-    if (id === null) return { ok: false, error: 'scard-unavailable' }
-    const raw = body?.cwd
-    const configured = typeof raw === 'string' && raw.trim() !== '' ? raw.trim() : null
-    stateCwd = configured
-    await refreshEffectiveCwd()
-    const fallback = effectiveCwdCache !== null && effectiveCwdCache !== configured
-    await writeStateFile(id, configured)
-    const agent = agents.get(id)
-    const blank = agent === undefined || !agent.session.events.some((ev) => ev.type === 'turn/start')
-    if (!blank) {
-      // 会话已开始：header.cwd 不可改，保留当前会话，清空后按新配置创建
-      return {
-        ok: true,
-        applied: false,
-        sessionId: id,
-        cwd: { configured, effective: effectiveCwdCache, fallback },
-      }
-    }
-    try {
-      if (workspaceRegistry !== undefined) await workspaceRegistry.archiveSession(id)
-    } catch (error) {
-      ctx.logger.warn(`[dsh-notes] archiveSession failed: ${String(error)}`)
-    }
-    overrides.delete(id)
-    revisions.delete(id)
-    const newId = await createResident()
-    residentIdRef.current = newId
-    residentPromise = null // 失效单飞缓存（同 scard-clear）
-    return {
-      ok: true,
-      applied: true,
-      sessionId: newId,
-      cwd: { configured, effective: effectiveCwdCache, fallback },
-    }
-  }
-
   return {
     enabled: true,
     handle(action, body) {
@@ -1240,8 +1229,6 @@ function setupScard(ctx) {
           return scardSelectPreset(body)
         case 'scard-select-model':
           return scardSelectModel(body)
-        case 'scard-select-cwd':
-          return scardSelectCwd(body)
         case 'scard-clear':
           return scardClear()
         default:

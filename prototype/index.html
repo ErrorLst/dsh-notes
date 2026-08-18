@@ -1007,7 +1007,6 @@ button.ds-leading { cursor: pointer; }
 .sc-field input:focus { border-color: var(--dsw-alias-state-business-primary); }
 .sc-field input::placeholder { color: var(--dsw-alias-label-caption); }
 .sc-popup-hint { font-size: 10.5px; color: var(--dsw-alias-state-warn-primary); }
-.sc-popup-hint.cwd { color: var(--dsw-alias-label-tertiary); }
 .sc-popup-foot { display: flex; justify-content: flex-end; flex: none; padding: 0 10px 10px; }
 .sc-popup-foot button {
   height: 26px;
@@ -1540,12 +1539,6 @@ button.ds-leading { cursor: pointer; }
             <label for="scEffort">思考等级</label>
             <select id="scEffort"></select>
           </div>
-          <div class="sc-field">
-            <label for="scCwd">工作目录（cwd）</label>
-            <input id="scCwd" type="text" placeholder="留空 = 临时目录" autocomplete="off" spellcheck="false" />
-            <span class="sc-popup-hint" id="scCwdHint" style="display:none"></span>
-            <span class="sc-popup-hint cwd" id="scCwdCurrent"></span>
-          </div>
         </div>
         <div class="sc-popup-foot">
           <button id="scPopupDone">完成</button>
@@ -1654,7 +1647,6 @@ const DEFAULT_DATA = {
     model: 'deepseek-v4-flash',
     effort: 'high',
     blank: true,
-    cwd: { configured: null, effective: 'C:\\Users\\zhoujin\\AppData\\Local\\Temp\\dsh-notes-resident', fallback: true },
     messages: [
       { kind: 'user', text: '你好，介绍一下这个常驻会话卡片' },
       { kind: 'context', label: '工作区指令', producer: '~/.dsh/AGENTS.md', source: { kind: 'agent-instructions', form: 'instructions', baseline: true, changes: [{ path: '~/.dsh/AGENTS.md', action: 'set', digest: 'sha256:3f9a…' }] }, text: '<system-reminder> 以下工作区指令可能与你的工作相关……\n\n来源：~/.dsh/AGENTS.md\n# 用户全局说明\n## 网络代理\n本机有一个可用的本地 HTTP 代理…' },
@@ -1731,7 +1723,6 @@ function defaults() {
       model: DEFAULT_DATA.card.model,
       effort: DEFAULT_DATA.card.effort,
       blank: true,
-      cwd: Object.assign({}, DEFAULT_DATA.card.cwd),
       messages: DEFAULT_DATA.card.messages.map((m) => Object.assign({}, m)),
     },
     selected: 'laptop',
@@ -2098,12 +2089,6 @@ function renderCardControls() {
   selEffort.innerHTML = eh
   selEffort.disabled = !(mm && mm.efforts.length)
 
-  /* 工作目录 */
-  const cwdInput = $('scCwd')
-  if (document.activeElement !== cwdInput) cwdInput.value = card.cwd && card.cwd.configured ? card.cwd.configured : ''
-  const cwdc = card.cwd || { effective: '', fallback: true }
-  $('scCwdCurrent').textContent = '当前：' + (cwdc.effective || '—') + (cwdc.fallback ? '（临时目录）' : '')
-
   $('scStatus').textContent = card.running ? '运行中…' : (card.blank ? '空白 · 预设可切换' : '已开始 · 预设已锁定')
   const btn = $('scSend')
   btn.textContent = card.running ? '停止' : '发送'
@@ -2382,34 +2367,6 @@ $('scModel').addEventListener('change', () => {
 $('scEffort').addEventListener('change', () => {
   state.card.effort = $('scEffort').value
   toastMsg('思考等级已切换 → ' + (state.card.effort ? effortName(state.card.effort) : '默认'))
-})
-
-/* 工作目录：留空/无效 → 临时目录；空白会话立即生效，已开始会话清空后生效 */
-const RESIDENT_TMP = 'C:\\Users\\zhoujin\\AppData\\Local\\Temp\\dsh-notes-resident'
-const ABS_RE = /^[a-zA-Z]:[\\/]|^\\\\|^\//
-function applyCwd() {
-  const value = $('scCwd').value.trim()
-  const hint = $('scCwdHint')
-  const fallback = !(value !== '' && ABS_RE.test(value))
-  const effective = fallback ? RESIDENT_TMP : value
-  state.card.cwd = { configured: value === '' ? null : value, effective, fallback }
-  if (fallback && value !== '') {
-    hint.textContent = '路径无效，已回退临时目录'
-    hint.style.display = ''
-  } else if (!state.card.blank) {
-    hint.textContent = '会话已开始，工作目录将在清空后生效'
-    hint.style.display = ''
-  } else {
-    hint.textContent = value === '' ? '已恢复默认（临时目录）' : '已应用'
-    hint.style.display = ''
-  }
-  renderCardControls()
-  persist()
-  toastMsg('工作目录 → ' + effective)
-}
-$('scCwd').addEventListener('blur', applyCwd)
-$('scCwd').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') { e.preventDefault(); $('scCwd').blur() }
 })
 
 /* 模拟会话（发送 / 流式 / 停止） */

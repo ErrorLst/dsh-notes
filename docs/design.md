@@ -3,6 +3,7 @@
 > 版本：0.4 · 状态：**已实现（M1 融合完成 + transcript 分级折叠，待重启 DSH 后验收）** · 关联原型：`prototype/index.html`
 >
 > 变更记录：
+> 0.4.18 —— **常驻会话设置持久化 + cwd 固定临时目录**：状态文件 `~/.dsh/session-card.json` 持久化 `{sessionId, presetId, provider, model, effort}`——⚙ 选择的预设/模型/思考等级在清空会话、重启 DSH 后都会应用到新的常驻会话（`agents.create`/`agents.resume` 的 `agentOptions` 与预设挂载都用持久化值；持久化模型不可用时回退默认选择重试一次）；**移除 ⚙「工作目录（cwd）」设置与 `scard-select-cwd` 动作**，cwd 不再持久化，每次新会话恒用系统临时目录 `{tmpdir}/dsh-notes-resident`（空白旧会话若 header.cwd 不一致仍自动重建落到临时目录）。
 > 0.4.17 —— 小计**默认落在当前工作区**：tab 初始值按工作区解析结果（有工作区 → 工作区 tab，无 → 全局）；`useEffect` 跟踪 `workspaceId` 变化——切换工作区后自动切到新工作区的小计（而非停留在全局），解析不到工作区（如切到 stray 会话）时回全局；挂载早期工作区解析从 undefined 变为有值也会自动落到工作区。原型默认 tab 同步改为工作区。
 > 0.4.16 —— 卡片输出**瀑布流效果**：运行中轮询 800ms → 400ms（流式内容更连续）；流式输出尾部常显**闪烁光标**（不再只在纯文本降级时显示）；内容增长时若停留在底部则**自动跟随滚动**（用户上翻后不打断，发送后强制滚到底一次；与官方 ChatView 一致）；思考/工具阶段（尚无可见流式文本）显示官方 turnStatus 同款**流光「正在生成…」状态行**（品牌渐变 + background-clip 文字 + 1.8s shimmer）；新消息行轻微上浮淡入（0.18s，流式行 key 稳定不重复触发）；`prefers-reduced-motion` 下关闭动画。原型同步状态行演示。
 > 0.4.15 —— **修复发送后误报「发送失败」**：`session.prompt` 的 wire 响应是 `{ok:true, value:{accepted:true}}`——`accepted` 在 `value` 内层，客户端旧判断读顶层 `result.accepted` 恒为 `undefined` → 每次发送成功也走失败分支显示「发送失败」，直到下一次轮询 `scard-chat-state` 成功才清掉（表现为「先显示发送失败、一会儿内容出现后消失」）。修复：改判 `result.ok === true && result.value?.accepted === true`。
@@ -27,7 +28,7 @@
 
 dsh-notes 在 DSH Web 界面中提供**侧栏与对话区之间的常驻竖栏**（无独立入口按钮、无弹窗）。v0.4 起竖栏**占据上边栏之下的整列高度**（从 DSH 顶部栏下缘到页面底部，**不覆盖上边栏**），自上而下分两个功能区：
 
-1. **上半部分 —— 常驻会话卡片**（融合自 dsh-session-card）：卡片内直接对话的**插件专属常驻会话**（v0.4.10 起有可配置工作目录，默认系统临时目录，独立于任何用户工作区），头部可设预设 / 模型 / 思考等级 / 工作目录，支持清空会话（归档 + 新建）。
+1. **上半部分 —— 常驻会话卡片**（融合自 dsh-session-card）：卡片内直接对话的**插件专属常驻会话**（工作目录恒为系统临时目录，独立于任何用户工作区；预设/模型/思考等级 v0.4.18 起持久化），头部可设预设 / 模型 / 思考等级，支持清空会话（归档 + 新建）。
 2. **下半部分 —— 小计**（原有功能）：**全局小记**（不分工作区）与**工作区小记**（以工作区隔离，跟随当前工作区）；每作用域含**待办区**（分点待办）与**随记区**（自由多行文本）。
 
 两部分之间为**可拖拽分隔条**（调整上下比例，浏览器 localStorage 持久化）。整个竖栏仍可折叠成「📝 小记」胶囊按钮（折叠状态持久化）。
@@ -49,7 +50,7 @@ dsh-notes 在 DSH Web 界面中提供**侧栏与对话区之间的常驻竖栏**
 | 宽度可调（水平拖拽） | 竖栏**右边缘**拖拽调整宽度（默认 280px，范围 220–480px，`localStorage['dsh-notes.width']` 持久化；拖拽样式 = DSH 原生：不可见热区，仅 `col-resize` 指针变化）；折叠态胶囊不受影响 |
 | 定位机制 | 与 v0.3 一致：`shell.overlay` 常驻条目 + `position: absolute` 浮层（定位上下文 = overlay 层，`inset: 0` 覆盖整个 AppFrame），不参与布局；`left` = AppFrame 网格第一列（侧栏列）实测宽度（向上找 grid 帧解析 `gridTemplateColumns`，MutationObserver 跟随折叠/拖拽）；`top: 0; bottom: 0`、`pointer-events: auto` |
 | —— 会话卡片（上半） —— | |
-| 常驻会话 | 插件专属会话：激活时 `agents.create`（`meta.cwd` = 配置的工作目录，未配置/无效 → 系统临时目录 `{tmpdir}/dsh-notes-resident`），id 与 cwd 存 `~/.dsh/session-card.json`（沿用旧 dsh-session-card 路径，已建会话复用、历史保留）；进程重启后 `agents.resume` 恢复，空白会话与配置 cwd 不一致时自动重建 |
+| 常驻会话 | 插件专属会话：激活时 `agents.create`（`meta.cwd` 恒为系统临时目录 `{tmpdir}/dsh-notes-resident`，**每次新会话都在临时目录**）；状态文件 `~/.dsh/session-card.json`（沿用旧 dsh-session-card 路径）v0.4.18 起存 `{sessionId, presetId, provider, model, effort}`——预设/模型/思考等级持久化，清空或重启后的新会话沿用；进程重启后 `agents.resume` 恢复，空白会话 header.cwd 与临时目录不一致时自动重建 |
 | 卡片内直接对话 | **简化显示（v0.4.8）**：只渲染用户输入气泡 / 模型输出气泡 / 回合错误行（官方 TurnErrorItem）；上下文注入、思考、工具调用行由 Host 照常折叠（§3.8-5 不变）但客户端不再显示，随时可恢复；**模型输出 Markdown 渲染（v0.4.14）**：官方 `MarkdownText`（GFM + TeX + 安全链接 + 流式）+ 输入发送 + 运行中可停止 |
 | 内容读取 | Host 折叠 `agent.session.events` 为**分级 transcript**（user / assistant / context / reasoning / tool 行，见 §3.8-5），客户端轮询 `chat-state`（运行中 800ms / 空闲 3s；发送后立即轮询；`lastSeq` 未变且非运行中跳过重渲染） |
 | 选择预设 | ⚙ 弹窗内 · `agentPresets` 名册；空白会话可切换（`presets.recompose` + `agent-preset/selected` 事件），已开始则锁定并提示 |
@@ -76,7 +77,7 @@ dsh-notes 在 DSH Web 界面中提供**侧栏与对话区之间的常驻竖栏**
 
 ### 2.2 常驻会话的性质（融合带来的新边界）
 
-- 常驻会话是一个**真实的 DSH 会话**（v0.4.10 起带可配置工作目录，默认系统临时目录；不绑定任何用户工作区），其消息、工具调用、模型请求与普通会话完全同路径——它是用户主动使用的聊天界面，**内容对 agent 可见是功能本身**（你在卡片里问的问题当然会进模型）。
+- 常驻会话是一个**真实的 DSH 会话**（工作目录恒为系统临时目录，v0.4.18 起不再可配置、不持久化；不绑定任何用户工作区），其消息、工具调用、模型请求与普通会话完全同路径——它是用户主动使用的聊天界面，**内容对 agent 可见是功能本身**（你在卡片里问的问题当然会进模型）。
 - 常驻会话**读不到小计**：插件没有任何路径把小计内容注入常驻会话的请求（无 prompt 注入、无工具、无上下文拼接）；两套数据在存储与代码两个层面都隔离。
 - 因此 v0.3 的「插件只依赖 webServer 与 storageDomain」变为：**小计功能**仍只依赖这两者；**会话卡片功能**额外依赖 `agents` / `agentPresets` / `llm` / `agentDefaultModel` / `workspaceRegistry` / `sessionTitle` / `sessionPersistence` / `sandboxPolicy` / `fs`（任一缺失 → 对应控件隐藏或降级，小计不受影响）。
 
@@ -162,7 +163,7 @@ const title       = useWorkspaces((s) => s.items.find((w) => w.workspaceId === w
 
 ### 3.8 会话卡片关键机制（融合自旧 dsh-session-card research.md §3，实现依据）
 
-1. **常驻会话创建/恢复**：`agents.create`（公开服务，走 agent 工厂完整路径：持久化 + setup + announce）；`meta: {cwd}` —— v0.4.10 起为**可配置工作目录**（⚙ 输入；未配置/路径无效 → `{tmpdir}/dsh-notes-resident`；cwd 在创建时写入 header，工具与 `{{cwd}}` 提示词变量都读 header.cwd，无法事后修改）；冷会话（重启后）用 `agents.resume({resumeSessionId, agentOptions, setup})` 恢复，`setup` 内 `presets.mount(agentCtx, 折叠出的预设 id)` + agent 作用域注册 `cwd` 变量兜底（遮蔽全局注册，防 persona `{{cwd}}` 组装失败）。**侧栏分组不受 cwd 影响（已核实）**：侧栏工作区 = `workspaceRegistry` 记录，记录仅由一次性 bootstrap 或显式「添加工作区」/apiproxy 建会话创建；常驻会话走宿主侧 `agents.create`、从不 attach 任何记录 → 始终是 stray 会话，显示在「未分组」（有内容后；空白会话本就不显示），cwd 只作用于工具与提示词。
+1. **常驻会话创建/恢复**：`agents.create`（公开服务，走 agent 工厂完整路径：持久化 + setup + announce）；`meta: {cwd}` —— v0.4.18 起**恒为系统临时目录** `{tmpdir}/dsh-notes-resident`（不再可配置、不持久化，每次新会话都在临时目录；cwd 在创建时写入 header，工具与 `{{cwd}}` 提示词变量都读 header.cwd，无法事后修改）；冷会话（重启后）用 `agents.resume({resumeSessionId, agentOptions, setup})` 恢复，`setup` 内 `presets.mount(agentCtx, 预设 id)` + agent 作用域注册 `cwd` 变量兜底（遮蔽全局注册，防 persona `{{cwd}}` 组装失败）。**设置持久化（v0.4.18）**：状态文件存 `{presetId, provider, model, effort}`，创建/恢复的 `agentOptions` 与预设挂载均用持久化值（模型不可用时回退默认选择重试一次）。**侧栏分组不受 cwd 影响（已核实）**：侧栏工作区 = `workspaceRegistry` 记录，记录仅由一次性 bootstrap 或显式「添加工作区」/apiproxy 建会话创建；常驻会话走宿主侧 `agents.create`、从不 attach 任何记录 → 始终是 stray 会话，显示在「未分组」（有内容后；空白会话本就不显示），cwd 只作用于工具与提示词。
 2. **预设切换**：空白检查 `!session.events.some(e => e.type === 'turn/start')`；`presets.recompose(agent.ctx, id)` + `session.append('agent-preset/selected', {agentPreset: id})`（log-only、无 turn 约束，可安全追加）；按 sessionId 串行化；失败类别 `agent-preset-not-found` / `agent-preset-invalid` / `agent-preset-locked`。
 3. **模型覆盖**：**不用**「改日志头」（`request/header` 只能在 open turn 内追加，不变式否决）；用全局 untagged `agent/request` 瀑布监听器：
    ```js
@@ -289,11 +290,10 @@ DomainSpec {
 
 | action | 附加字段 | 返回 |
 | --- | --- | --- |
-| `scard-state` | — | `{scard: {sessionId, title, blank, running, presetId, presetLocked, presets: [{id, name?, trust, isDefault, broken?}], model: {provider, model, effort?}, catalog: [{id, name, models: [{id, name, reasoning: {efforts: [{id, name}], defaultEffort?}?}]}], cwd: {configured, effective, fallback}}}` |
-| `scard-select-preset` | `presetId` | `{presetId}` 或 `{error: {code, message}}`（locked / unknown / invalid / not-attached） |
-| `scard-select-model` | `provider`, `model`, `effort?` | `{selected: {provider, model, effort?}}` 或 `{error}` |
-| `scard-select-cwd` | `cwd: string\|null` | `{ok, applied, sessionId, cwd: {configured, effective, fallback}}`；`fallback` = 无效路径回退临时目录；`applied: false` = 会话已开始，清空后生效 |
-| `scard-clear` | — | `{sessionId}` 或 `{error}`（running） |
+| `scard-state` | — | `{scard: {sessionId, title, blank, running, presetId, presetLocked, presets: [{id, name?, trust, isDefault, broken?}], model: {provider, model, effort?}, catalog: [{id, name, models: [{id, name, reasoning: {efforts: [{id, name}], defaultEffort?}?}]}]}}` |
+| `scard-select-preset` | `presetId` | `{presetId}` 或 `{error: {code, message}}`（locked / unknown / invalid / not-attached）；成功后持久化到状态文件 `presetId` |
+| `scard-select-model` | `provider`, `model`, `effort?` | `{selected: {provider, model, effort?}}` 或 `{error}`；成功后持久化 `provider/model/effort` 到状态文件 |
+| `scard-clear` | — | `{sessionId}` 或 `{error}`（running）；新建会话沿用持久化的预设/模型/思考等级，cwd 恒为临时目录 |
 | `scard-chat-state` | — | `{scard: {sessionId, lastSeq, running, partials: [{kind: 'assistant'\|'reasoning'\|'tool', …}], messages: [{kind: 'user'\|'assistant'\|'context'\|'reasoning'\|'tool', …}]}}` 或 `{scard: {cold: true}}`（行字段见 §3.8-5；context 行含 `source`，tool 行含 `callId`） |
 
 - 小计动作错误：`scope: 'global'` 时 `workspaceId` 必须缺省；`scope: 'workspace'` 时 `workspaceId` 必填；否则 `bad-args`。成功返回 `{ok: true, state: <快照>}`；存储域不可用 `{ok: false, error: 'storage-unavailable'}`；`undo-delete` 无记录 404。
@@ -377,7 +377,7 @@ dsh-notes/
 | Host API 冒烟测试 | M2/M3 人工验收 | node --test 起临时端口打 API |
 | 多窗口实时同步 | 秒级延迟 | SSE 推送 `domain/changed` |
 | 卡片高度独立折叠 | 全高竖栏占用过多 | 会话卡片区单独折叠成一行 |
-| 会话卡片常驻会话位置可配置 | 固定「未分组」 | ✅ v0.4.10 已落地：⚙ 工作目录输入（无效/未配置 → 临时目录） |
+| 会话卡片常驻会话位置可配置 | 固定「未分组」 | ❌ 已核实不可行：侧栏分组 = 工作区记录归属，常驻会话不 attach 任何记录 → 恒为 stray/未分组；cwd 曾作为折中（v0.4.10）但 v0.4.18 已移除——工作目录恒为临时目录 |
 
 **明确不做**：模型侧工具/小计可见性（违反核心要求）；提醒/通知；随记 Markdown 渲染；多用户/云同步。
 
