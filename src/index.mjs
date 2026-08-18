@@ -430,18 +430,28 @@ function setupScard(ctx) {
     return { enabled: false, handle: () => ({ ok: false, error: 'scard-unavailable' }) }
   }
 
-  /* ---- 状态文件（沿用旧 dsh-session-card 路径，已建会话无缝复用） ---- */
-  let stateFile = null
-  try {
-    if (fs !== undefined && sandboxPolicy !== undefined && typeof fs.resolve === 'function') {
-      stateFile = fs.resolve(sandboxPolicy.workspaceRoot, '.dsh', 'session-card.json')
+  /* ---- 状态文件（沿用旧 dsh-session-card 路径，已建会话无缝复用） ----
+   * fs.resolve(path) 是单路径 API（异步，返回 FsTarget；相对路径按 backend cwd
+   * 解析），多段路径必须先 node:path.join，再 resolve 并 await 出 target。 */
+  let stateFilePromise = null
+  function resolveStateFile() {
+    if (stateFilePromise !== null) return stateFilePromise
+    const root = sandboxPolicy === undefined ? undefined : sandboxPolicy.workspaceRoot
+    if (fs === undefined || typeof fs.resolve !== 'function' || typeof root !== 'string' || root === '') {
+      stateFilePromise = Promise.resolve(null)
+      return stateFilePromise
     }
-  } catch {
-    stateFile = null
+    stateFilePromise = fs.resolve(join(root, '.dsh', 'session-card.json')).catch((error) => {
+      ctx.logger.warn(`[dsh-notes] failed to resolve session-card state path: ${String(error)}`)
+      return null
+    })
+    return stateFilePromise
   }
 
   async function readStateFile() {
-    if (stateFile === null || fs === undefined) return undefined
+    if (fs === undefined) return undefined
+    const stateFile = await resolveStateFile()
+    if (stateFile === null) return undefined
     try {
       const text = await fs.readText(stateFile)
       const parsed = JSON.parse(text)
@@ -460,7 +470,9 @@ function setupScard(ctx) {
 
   /** 持久化常驻会话设置（预设/模型/思考等级）；cwd 不持久化。 */
   async function writeStateFile(sessionId, settings) {
-    if (stateFile === null || fs === undefined) return
+    if (fs === undefined) return
+    const stateFile = await resolveStateFile()
+    if (stateFile === null) return
     try {
       const record = { sessionId }
       if (settings?.presetId !== undefined) record.presetId = settings.presetId
