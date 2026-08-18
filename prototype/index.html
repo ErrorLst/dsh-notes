@@ -888,6 +888,89 @@ button.ds-leading { cursor: pointer; }
 }
 .sc-empty { align-self: center; margin: auto; color: var(--dsw-alias-label-tertiary); font-size: 12px; }
 
+/* 历史轮次折叠行（多轮对话时之前的轮次折叠，点击弹出记录卡片） */
+.sc-history {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  cursor: pointer;
+  font-size: 11.5px;
+  line-height: 1.4;
+  min-width: 0;
+  transition: background var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+}
+.sc-history:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.sc-history-label { flex: none; font-weight: 500; color: var(--dsw-alias-state-business-primary); }
+.sc-history-preview {
+  flex: 1;
+  min-width: 0;
+  color: var(--dsw-alias-label-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.sc-history-count { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 10.5px; }
+.sc-history-chev { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 1; }
+
+/* 历史轮次记录卡片（覆盖常驻会话区域，毛玻璃） */
+.sc-history-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: transparent;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+}
+.sc-history-card {
+  width: 100%;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--dsw-alias-bg-base);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+  box-shadow: var(--dsh-notes-shadow);
+  overflow: hidden;
+}
+.sc-history-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  min-height: 36px;
+  padding: 6px 8px 6px 10px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+.sc-history-card-head .t { flex: 1; font-size: 12.5px; font-weight: 500; line-height: 20px; }
+.sc-history-card-head .x {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: none;
+  background: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.sc-history-card-head .x:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.sc-history-card-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 /* 输入行 */
 .sc-input-row { display: flex; gap: 6px; flex: none; padding: 8px 10px; border-top: 1px solid var(--dsw-alias-border-l1); }
 .sc-input {
@@ -1653,6 +1736,17 @@ button.ds-leading { cursor: pointer; }
           <button id="scPopupDone">完成</button>
         </div>
       </div>
+
+      <!-- 历史轮次记录卡片（多轮对话后之前的轮次折叠，点击查看） -->
+      <div class="sc-history-overlay" id="scHistoryOverlay" style="display:none">
+        <div class="sc-history-card">
+          <div class="sc-history-card-head">
+            <span class="t" id="scHistoryTitle"></span>
+            <button type="button" class="x" id="scHistoryClose" title="关闭">×</button>
+          </div>
+          <div class="sc-history-card-body" id="scHistoryBody"></div>
+        </div>
+      </div>
     </section>
 
     <!-- ===== 分隔条 ===== -->
@@ -1788,6 +1882,8 @@ const DEFAULT_DATA = {
       { kind: 'assistant', text: '常驻会话独立于任何工作区，清空后会归档并自动新建空白会话。' },
       { kind: 'tool', name: 'bash', callId: 'call_02', args: '{"command":"ls -la"}', result: 'ls: cannot access: 演示错误', isError: true, done: true },
       { kind: 'turn-error', text: '该模型当前访问量过大，请您稍后再试', code: 'RATE_LIMITED' },
+      { kind: 'user', text: '把刚才的回复总结成三点' },
+      { kind: 'assistant', text: '好的，三点总结：\n\n1. **迷你会话窗口**：嵌在小计竖栏上半部分，直接对话；\n2. **Markdown 渲染**：支持粗体、行内代码、代码块与链接；\n3. **常驻独立**：工作目录在临时目录，不绑定任何工作区。' },
     ],
   },
 }
@@ -2115,7 +2211,21 @@ function renderCardMessages() {
   let html = ''
   let hasContent = false
   const openSet = state.cardOpen || {}
+  /* 按用户消息分轮：只有一轮平铺，多轮时之前的轮次折叠成摘要行 */
+  const turns = []
+  let current = null
   for (const m of state.card.messages) {
+    if (m.kind === 'user') {
+      current = { id: m.id || turns.length, userText: m.text, rows: [m] }
+      turns.push(current)
+    } else if (current) {
+      current.rows.push(m)
+    } else {
+      current = { id: 't0', userText: '', rows: [m] }
+      turns.push(current)
+    }
+  }
+  const renderRow = (m) => {
     if (m.kind === 'user') {
       html += '<div class="sc-msg user">' + esc(m.text) + '</div>'
       hasContent = true
@@ -2132,6 +2242,22 @@ function renderCardMessages() {
     }
     // 简化显示：上下文注入 / 思考 / 工具调用行（host 仍折叠）不渲染
   }
+  if (turns.length <= 1) {
+    for (const m of state.card.messages) renderRow(m)
+  } else {
+    for (let i = 0; i < turns.length - 1; i += 1) {
+      const turn = turns[i]
+      const preview = String(turn.userText || '').split('\n')[0].trim()
+      const shown = preview.length > 18 ? preview.slice(0, 18) + '…' : preview
+      html += '<div class="sc-history" data-history="' + i + '">'
+        + '<span class="sc-history-label">对话 ' + (i + 1) + '</span>'
+        + '<span class="sc-history-preview">' + (shown ? esc(shown) : '（无标题）') + '</span>'
+        + '<span class="sc-history-count">' + turn.rows.length + ' 条</span>'
+        + '<span class="sc-history-chev">›</span>'
+        + '</div>'
+    }
+    for (const m of turns[turns.length - 1].rows) renderRow(m)
+  }
   // 运行中且尚无可见流式文本（思考/工具阶段）：官方同款流光「正在生成…」状态行
   const streamingText = state.card.messages.some((m) => m.kind === 'assistant' && m.streaming === true && m.text !== '')
   if (state.card.running && !streamingText) html += '<div class="sc-streaming-status" role="status">正在生成…</div>'
@@ -2139,6 +2265,44 @@ function renderCardMessages() {
   el.innerHTML = html
   el.scrollTop = el.scrollHeight
 }
+/* 历史轮次记录卡片（点击折叠行弹出，只覆盖常驻会话区域） */
+function openHistory(index) {
+  const turns = []
+  let current = null
+  for (const m of state.card.messages) {
+    if (m.kind === 'user') { current = { userText: m.text, rows: [m] }; turns.push(current) }
+    else if (current) current.rows.push(m)
+  }
+  const turn = turns[index]
+  if (!turn) return
+  const preview = String(turn.userText || '').split('\n')[0].trim()
+  const shown = preview.length > 18 ? preview.slice(0, 18) + '…' : preview
+  $('scHistoryTitle').textContent = '对话 ' + (index + 1) + (shown ? ' · ' + shown : '')
+  let html = ''
+  for (const m of turn.rows) {
+    if (m.kind === 'user') html += '<div class="sc-msg user">' + esc(m.text) + '</div>'
+    else if (m.kind === 'assistant') html += '<div class="sc-msg assistant"><div class="bubble">' + mdHtml(m.text) + '</div></div>'
+    else if (m.kind === 'turn-error') {
+      html += '<div class="ds-turn-error" role="status">'
+        + '<span class="ds-dot ds-turn-error-dot" data-state="error"></span>'
+        + '<div class="ds-turn-error-copy"><span class="ds-turn-error-title">本轮运行失败</span><span class="ds-turn-error-message">' + esc(m.text || '') + '</span></div>'
+        + (m.code ? '<code class="ds-turn-error-code">' + esc(m.code) + '</code>' : '')
+        + '</div>'
+    }
+  }
+  $('scHistoryBody').innerHTML = html
+  $('scHistoryOverlay').style.display = ''
+}
+function closeHistory() {
+  $('scHistoryOverlay').style.display = 'none'
+  $('scHistoryBody').innerHTML = ''
+}
+$('scMessages').addEventListener('click', (e) => {
+  const h = e.target.closest('.sc-history')
+  if (h && h.dataset.history !== undefined) { openHistory(Number(h.dataset.history)); return }
+})
+$('scHistoryClose').addEventListener('click', closeHistory)
+$('scHistoryOverlay').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeHistory() })
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }

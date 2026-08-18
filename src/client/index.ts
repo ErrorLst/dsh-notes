@@ -363,6 +363,89 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 }
 .sc-empty { align-self: center; margin: auto; color: var(--dsw-alias-label-tertiary); font-size: 12px; }
 
+/* 历史轮次折叠行（多轮对话时之前的轮次折叠，点击弹出记录卡片） */
+.sc-history {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  cursor: pointer;
+  font-size: 11.5px;
+  line-height: 1.4;
+  min-width: 0;
+  transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
+}
+.sc-history:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.sc-history-label { flex: none; font-weight: 500; color: var(--dsw-alias-state-business-primary); }
+.sc-history-preview {
+  flex: 1;
+  min-width: 0;
+  color: var(--dsw-alias-label-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.sc-history-count { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 10.5px; }
+.sc-history-chev { flex: none; color: var(--dsw-alias-label-tertiary); font-size: 12px; line-height: 1; }
+
+/* 历史轮次记录卡片（覆盖常驻会话区域，毛玻璃） */
+.sc-history-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: transparent;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+}
+.sc-history-card {
+  width: 100%;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--dsw-alias-bg-base);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+  box-shadow: var(--dsh-notes-shadow);
+  overflow: hidden;
+}
+.sc-history-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  min-height: 36px;
+  padding: 6px 8px 6px 10px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+.sc-history-card-head .t { flex: 1; font-size: 12.5px; font-weight: 500; line-height: 20px; }
+.sc-history-card-head .x {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: none;
+  background: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.sc-history-card-head .x:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.sc-history-card-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 /* ======================================================================
    折叠披露行 —— 官方同款实现（disclosure 骨架 + 思考行 + 上下文行 + 工具行）
    结构/样式逐条对应 dsh-client-ui-conversation 的 DisclosureRow /
@@ -1581,6 +1664,7 @@ function NotesDock(props) {
   const detailDraftRef = useRef(null)
   const detailDirtyRef = useRef(false)
   const detailTimerRef = useRef(null)
+  const [historyCard, setHistoryCard] = useState(null) // { label, rows } | null（历史轮次记录卡片）
   const [memoText, setMemoText] = useState('')
   const [memoStatus, setMemoStatus] = useState('')
   const [undoInfo, setUndoInfo] = useState(null) // { scope, count } | null
@@ -2365,23 +2449,59 @@ function NotesDock(props) {
     }
     return null
   }
+  /* 消息行统一渲染（主列表与历史记录卡片共用） */
+  function rowElementOf(message, streaming) {
+    if (message.kind === 'user') {
+      return React.createElement('div', { key: message.id, className: 'sc-msg user' }, message.text)
+    }
+    if (message.kind === 'assistant') {
+      return React.createElement('div', { key: message.id, className: 'sc-msg assistant' },
+        React.createElement('div', { className: 'bubble' }, assistantContent(message.text, streaming === true)),
+      )
+    }
+    return rowElement(message, streaming)
+  }
   const chatRows = []
   if (chat === null || chat.cold === true) {
     chatRows.push(React.createElement('div', { key: 'empty', className: 'sc-empty' }, chat === null ? '常驻会话 · 直接在这里对话' : '常驻会话 · 发送首条消息以开始'))
   } else {
+    /* 按用户消息分轮：每轮 = 一条用户输入 + 后续模型输出/回合错误；
+       只有一轮时正常平铺，多轮时之前的轮次折叠成摘要行（点击弹出记录卡片） */
+    const turns = []
+    let current = null
     for (const message of chat.messages) {
       if (message.kind === 'user') {
-        chatRows.push(React.createElement('div', { key: message.id, className: 'sc-msg user' }, message.text))
-      } else if (message.kind === 'assistant') {
+        current = { id: message.id, userText: message.text, rows: [message] }
+        turns.push(current)
+      } else if (current !== null) {
+        current.rows.push(message)
+      } else {
+        current = { id: 't0', userText: '', rows: [message] }
+        turns.push(current)
+      }
+    }
+    if (turns.length <= 1) {
+      for (const message of chat.messages) chatRows.push(rowElementOf(message, false))
+    } else {
+      for (let i = 0; i < turns.length - 1; i++) {
+        const turn = turns[i]
+        const preview = (turn.userText.split('\n')[0] ?? '').trim()
+        const shown = preview.length > 18 ? preview.slice(0, 18) + '…' : preview
         chatRows.push(
-          React.createElement('div', { key: message.id, className: 'sc-msg assistant' },
-            React.createElement('div', { className: 'bubble' }, assistantContent(message.text, false)),
+          React.createElement('div', {
+            key: `h${turn.id}`,
+            className: 'sc-history',
+            'data-tip': '查看该轮对话记录',
+            onClick: () => setHistoryCard({ label: `对话 ${i + 1} · ${shown}`, rows: turn.rows }),
+          },
+            React.createElement('span', { className: 'sc-history-label' }, `对话 ${i + 1}`),
+            React.createElement('span', { className: 'sc-history-preview' }, shown === '' ? '（无标题）' : shown),
+            React.createElement('span', { className: 'sc-history-count' }, `${turn.rows.length} 条`),
+            React.createElement('span', { className: 'sc-history-chev' }, '›'),
           ),
         )
-      } else {
-        const el = rowElement(message, false)
-        if (el !== null) chatRows.push(el)
       }
+      for (const message of turns[turns.length - 1].rows) chatRows.push(rowElementOf(message, false))
     }
     const streamingText = Array.isArray(chat.partials)
       ? chat.partials.some((p) => p.kind === 'assistant' && p.text !== '')
@@ -2619,6 +2739,31 @@ function NotesDock(props) {
               )
             : React.createElement('span', { className: 'sc-status' }, statusText),
         ),
+        /* 历史轮次记录卡片：只覆盖常驻会话区域 */
+        historyCard === null
+          ? null
+          : React.createElement(
+              'div',
+              {
+                className: 'sc-history-overlay',
+                onClick: (event) => { if (event.target === event.currentTarget) setHistoryCard(null) },
+              },
+              React.createElement(
+                'div',
+                { className: 'sc-history-card' },
+                React.createElement(
+                  'div',
+                  { className: 'sc-history-card-head' },
+                  React.createElement('span', { className: 't' }, historyCard.label),
+                  React.createElement('button', { type: 'button', className: 'x', 'data-tip': '关闭', onClick: () => setHistoryCard(null) }, '×'),
+                ),
+                React.createElement(
+                  'div',
+                  { className: 'sc-history-card-body' },
+                  ...historyCard.rows.map((message) => rowElementOf(message, false)).filter(Boolean),
+                ),
+              ),
+            ),
         popupOpen
           ? React.createElement(
               'div',
