@@ -5,6 +5,10 @@
   "private": true,
   "type": "module",
   "main": "lib/index.mjs",
+  "files": [
+    "lib",
+    "cordis.patch.yml"
+  ],
   "exports": {
     ".": {
       "default": "./lib/index.mjs"
@@ -20,7 +24,8 @@
     "client": {
       "inject": [
         "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-client-ui-sidebar"
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-primitives"
       ],
       "platform": "web"
     }

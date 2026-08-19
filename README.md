@@ -19,18 +19,29 @@ DSH（DeepSeek Harness）「小记」插件：常驻在侧栏与对话区之间�
 
 ## 快速开始
 
+### 方式一：直接安装（git 分发，无需克隆/构建）
+
 ```bash
-# 1. 克隆并构建
+dsh plugin --profile web add github:ErrorLst/dsh-notes
+dsh web               # 重启 dsh web 生效
+```
+
+说明：
+
+- 首次使用该命令会自动初始化 web profile；命令转发为 profile 目录的
+  `pnpm add github:ErrorLst/dsh-notes`，成功后 reconcile 自动把声明了
+  `dsh.bundle.patch` 的包追加进 `dsh.profile.bundles`（无需手动登记）。
+- 安装后**必须重启 dsh web**：bundle 层在启动时组合，客户端 bundle 在启动时扫描。
+
+### 方式二：本地开发（克隆并构建）
+
+```bash
 git clone <本仓库地址> dsh-notes
 cd dsh-notes
 pnpm install
 pnpm build            # 产出 lib/index.mjs（Host half）+ lib/client.js（浏览器 bundle）
-
-# 2. 安装进 DSH（一步完成：加入 profile 依赖并自动登记为 bundle 层）
 dsh plugin --profile web add .
-
-# 3. 重启 DSH 使其生效
-dsh web               # 或 dsh --profile web
+dsh web               # 重启 DSH 使其生效
 ```
 
 说明：

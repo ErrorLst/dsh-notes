@@ -22,9 +22,9 @@
 const React = require('react')
 const { useState, useEffect, useLayoutEffect, useRef, useCallback } = React
 
-/* 内置 GFM 渲染器（marked 源码相对导入 → 随 bundle 内联；原始 HTML 转义为
+/* 内置 GFM 渲染器（marked 裸导入 → tsdown 内联进 client bundle；原始 HTML 转义为
  * 字面文本，链接/图片仅允许 http(s)/mailto） */
-import { marked as markedParseFn, Renderer as MarkedRenderer } from '../../node_modules/marked/lib/marked.esm.js'
+import { marked as markedParseFn, Renderer as MarkedRenderer } from 'marked'
 
 /* 官方 Markdown 渲染（dsh-client-ui-primitives：GFM + TeX 数学 + 安全链接 +
  * 流式渲染；解析失败时降级到内置 marked 渲染器；再失败为纯文本） */
