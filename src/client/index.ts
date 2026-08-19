@@ -13,7 +13,7 @@
 //        清空会话（归档+新建）；
 //        发送/停止走 sessions.binding(id).session.prompt/cancel（wire RPC）。
 //      - 分隔条：拖拽调整上下比例（25%–75%，双击复位 46%），localStorage 持久化。
-//      - 下半：小计 —— 全局/本工作区 tab + 待办区（添加/勾选/双击编辑/删除/
+//      - 下半：小计 —— 全局/本工作区 tab + 待办区（添加/勾选/双击打开详情/删除/
 //        清空/置顶/拖拽排序/撤销删除）+ 随记区（自由文本，防抖 600ms + 失焦保存）。
 //   3. 小计数据经 fetch('/api/dsh-notes') 读写；当前工作区解析链：
 //      当前会话 cwd（useSessions）→ 路径匹配工作区 → 兜底 recentWorkspaceId。
@@ -913,19 +913,6 @@ button.ds-leading { cursor: pointer; }
   padding: 1px 0;
 }
 .np-item.done .np-text { color: var(--dsw-alias-label-tertiary); text-decoration: line-through; }
-.np-edit {
-  flex: 1;
-  min-width: 0;
-  padding: 1px 4px;
-  border-radius: 6px;
-  border: 1px solid var(--dsw-alias-brand-primary);
-  background: var(--dsw-specific-input-major);
-  color: var(--dsw-alias-label-primary);
-  font-size: 12px;
-  outline: none;
-  user-select: text;
-  -webkit-user-select: text;
-}
 .np-pin {
   flex: none;
   width: 22px;
@@ -1657,7 +1644,6 @@ function NotesDock(props) {
       setTab(workspaceId !== undefined ? 'workspace' : 'global')
     }
   }, [workspaceId])
-  const [editing, setEditing] = useState(null) // { id, text }
   const [detailDraft, setDetailDraft] = useState(null) // { id, text, detail } | null（待办详情卡片草稿）
   const [detailStatus, setDetailStatus] = useState('')
   const detailDraftRef = useRef(null)
@@ -1674,7 +1660,6 @@ function NotesDock(props) {
   const [cardError, setCardError] = useState(null)
   const [popupOpen, setPopupOpen] = useState(false)
   const [confirming, setConfirming] = useState(false)
-  const editingRef = useRef(null)
   const memoTextRef = useRef('')
   const dirtyRef = useRef(false)
   const memoTimerRef = useRef(null)
@@ -2094,22 +2079,8 @@ function NotesDock(props) {
     }
   }, [data])
 
-  /* ---------- 行内编辑 ---------- */
-  function startEdit(item) {
-    editingRef.current = { id: item.id, text: item.text }
-    setEditing({ id: item.id, text: item.text })
-  }
-  function commitEdit() {
-    const edit = editingRef.current
-    editingRef.current = null
-    setEditing(null)
-    if (edit === null) return
-    const text = edit.text.trim()
-    if (text === '') return
-    void post({ action: 'edit', scope: tab, workspaceId: workspaceArg, id: edit.id, text })
-  }
-
-  /* ---------- 待办详情卡片（弹出编辑，自动保存：防抖 600ms + 关闭时落盘） ---------- */
+  /* ---------- 待办详情卡片（双击行 / 悬停「详情」按钮弹出；标题与描述均在此编辑，
+     自动保存：防抖 600ms + 关闭时落盘；行内标题编辑 v0.4.27 起移除） ---------- */
   function openDetail(item) {
     flushDetailSave()
     const draft = { id: item.id, text: item.text, detail: item.detail ?? '' }
@@ -2404,7 +2375,7 @@ function NotesDock(props) {
       'div',
       {
         className: 'dsh-notes-dock collapsed',
-        'data-notes-ver': 'ce9291b',
+        'data-notes-ver': '01cfad4',
         ref: rootRef,
         // 折叠态贴底：显式 top auto，覆盖测量出的顶部偏移
         style: { left: `${left}px`, top: 'auto' },
@@ -2620,27 +2591,6 @@ function NotesDock(props) {
   const listItems = displayTodos.length === 0
     ? [React.createElement('div', { key: 'empty', className: 'np-empty' }, '还没有待办')]
     : displayTodos.map((item) => {
-        if (editing !== null && editing.id === item.id) {
-          return React.createElement(
-            'div',
-            { key: item.id, className: 'np-item' },
-            React.createElement('input', {
-              className: 'np-edit',
-              autoFocus: true,
-              defaultValue: editing.text,
-              maxLength: 500,
-              onChange: (event) => {
-                editingRef.current = { id: item.id, text: event.target.value }
-                setEditing({ id: item.id, text: event.target.value })
-              },
-              onKeyDown: (event) => {
-                if (event.key === 'Enter') commitEdit()
-                if (event.key === 'Escape') { editingRef.current = null; setEditing(null) }
-              },
-              onBlur: commitEdit,
-            }),
-          )
-        }
         const rowClass = 'np-item'
           + (item.done ? ' done' : '')
           + (item.pinned ? ' pinned' : '')
@@ -2652,8 +2602,12 @@ function NotesDock(props) {
             key: item.id,
             'data-id': item.id,
             className: rowClass,
-            title: '双击编辑',
-            onDoubleClick: () => startEdit(item),
+            title: '双击打开详情',
+            onDoubleClick: (event) => {
+              // 行内按钮上的双击交给按钮自身处理（勾选/置顶/详情/删除/拖拽），不弹详情卡
+              if (typeof event.target.closest === 'function' && event.target.closest('button')) return
+              openDetail(item)
+            },
           },
           React.createElement('button', {
             type: 'button',
@@ -2707,7 +2661,7 @@ function NotesDock(props) {
     'div',
     {
       className: 'dsh-notes-dock',
-      'data-notes-ver': 'ce9291b',
+      'data-notes-ver': '01cfad4',
       ref: (node) => {
         rootRef.current = node
         dockRef.current = node
