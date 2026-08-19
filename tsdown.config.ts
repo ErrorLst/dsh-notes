@@ -18,8 +18,11 @@ export default [
     dts: false,
     clean: false,
     deps: {
-      // 平台模块保持外部（loader 提供）；其余依赖（如 marked）内联打包
+      // 平台模块保持外部（loader 提供）；marked 是 dependencies 里的真实依赖，
+      // 必须 alwaysBundle 强制内联——否则 tsdown 默认外部化，浏览器端模块表
+      // 没有 marked 工厂，运行时 require("marked") 会直接失败
       neverBundle: [/@deepseek-ai\/dsh-client-/, 'react', 'react-dom'],
+      alwaysBundle: ['marked'],
     },
     outputOptions: {
       entryFileNames: 'client.js',
