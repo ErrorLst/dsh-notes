@@ -1768,13 +1768,14 @@ function NotesDock(props) {
       } catch { /* ignore */ }
       return null
     }
+    let scrollEl = findScrollBody()
     const updateLeft = () => {
       const columns = getComputedStyle(frame).gridTemplateColumns.split(' ')
       const px = parseFloat(columns[0])
       if (Number.isFinite(px)) setLeft(px)
     }
     const updateTop = () => {
-      const base = findScrollBody() ?? center?.firstElementChild ?? null
+      const base = scrollEl ?? center?.firstElementChild ?? null
       if (base === null) return
       const frameRect = frame.getBoundingClientRect()
       const baseRect = base.getBoundingClientRect()
@@ -1782,19 +1783,48 @@ function NotesDock(props) {
     }
     updateLeft()
     updateTop()
-    const onResize = () => { updateLeft(); updateTop() }
-    const observer = new MutationObserver(onResize)
-    observer.observe(frame, { attributes: true, attributeFilter: ['style'] })
+    let raf = 0
+    const scheduleUpdate = () => {
+      if (raf !== 0) return
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        scrollEl = findScrollBody()
+        updateLeft()
+        updateTop()
+      })
+    }
+    const onResize = scheduleUpdate
+    // 除 frame 自身 style 变化（侧栏折叠/拖拽）外，还要监听中间栏 DOM 增删与会话头部显隐：
+    // 首次启动没有会话时头部隐藏（wSkVaW_headerHidden / data-phase=hero），打开会话后
+    // 头部插入内容/切换 data-phase，scrollBody 的 top 才会下移；若只监听 style 属性，
+    // top 不会重新测量，导致竖栏遮住上方状态栏。
+    const observer = new MutationObserver((mutations) => {
+      // 会话内消息流式渲染会不断增删 scroll body 内部的子节点；这些变化不影响
+      // 竖栏 top/left，应忽略，避免每次流式块都触发重排和 setState。
+      let relevant = false
+      for (const mutation of mutations) {
+        if (scrollEl !== null && (mutation.target === scrollEl || scrollEl.contains(mutation.target))) continue
+        relevant = true
+        break
+      }
+      if (relevant) scheduleUpdate()
+    })
+    observer.observe(frame, { attributes: true, attributeFilter: ['style', 'data-sidebar-collapsed'], childList: true })
+    if (center !== null) {
+      // class/data-phase 用于会话头部显隐（wSkVaW_headerHidden / root data-phase），
+      // 这些变化不产生 childList 时也必须能触发 top 重测。
+      observer.observe(center, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'data-phase'] })
+    }
     let ro = null
     if (typeof ResizeObserver !== 'undefined') {
       ro = new ResizeObserver(onResize)
       ro.observe(frame)
       if (center !== null) ro.observe(center)
-      const scroll = findScrollBody()
-      if (scroll !== null) ro.observe(scroll)
+      if (scrollEl !== null) ro.observe(scrollEl)
     }
     window.addEventListener('resize', onResize)
     return () => {
+      if (raf !== 0) cancelAnimationFrame(raf)
       observer.disconnect()
       if (ro !== null) ro.disconnect()
       window.removeEventListener('resize', onResize)

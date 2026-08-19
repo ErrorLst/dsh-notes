@@ -1,8 +1,9 @@
 # dsh-notes 设计文档
 
-> 版本：0.4 · 状态：**已实现（M1 融合完成 + transcript 分级折叠，待重启 DSH 后验收）** · 关联原型：`prototype/index.html`
+> 版本：0.4 · 状态：**已实现（v0.4.25）** · 关联原型：`prototype/index.html`
 >
 > 变更记录：
+> 0.4.25 —— **竖栏定位跟随会话头部显隐**：top 的测量基准（scrollBody）在会话打开/切换时才会下移——旧实现只监听 frame 自身 style 变化，会话头部插入内容/切换 `data-phase` 时 top 不重测，竖栏会遮住上方状态栏。修复：MutationObserver 同时监听中间栏子树（childList + class/data-phase 属性），并忽略 scroll body 内部流式渲染的节点增删；所有重测经 `requestAnimationFrame` 合并，流式块不再逐块触发重排。
 > 0.4.24 —— **修复折叠/展开后残留「展开小记」**：根因是 React 按位置复用——折叠树根级子元素 `[button, div.np-tip]` 与展开树 `[div.dock-body, div.dock-resizer, div.np-tip]` 均无 key，展开时旧的 np-tip 节点被**原地改造成 dock-resizer**：残留内联 `left/top`（旧提示坐标 ≈ 展开后常驻会话标题行左侧）与 textContent「展开小记」，且 8px 窄条失去 nowrap 后文字**竖排显示**。修复：根级子元素加稳定 key（`pill`/`tip`/`body`/`resizer`）使 np-tip 按 key 复用、resizer 全新挂载；`collapse`/`expand` 先 `hideTip()` + 竖栏根 `onPointerDown` 兜底 + `useLayoutEffect` 在 collapsed 切换后兜底隐藏。
 > 0.4.23 —— 常驻会话**历史轮次折叠**：卡片小、多轮后难找旧消息——按用户消息把 transcript 分成轮（一轮 = 一条用户输入 + 后续模型输出/回合错误）；只有一轮时正常平铺，多轮时**之前的轮次折叠成摘要行**（「对话 N · 首条消息预览 · X 条 · ›」，顶部排列），当前轮保持展开（含流式）；点击折叠行弹出**记录卡片**（毛玻璃遮罩，只覆盖常驻会话区域），完整渲染该轮的用户气泡/模型 Markdown 输出/回合错误；卡片 × / 点遮罩关闭，可滚动。纯客户端分组，Host transcript 结构不变。原型同步并补第二轮演示数据。
 > 0.4.22 —— 待办详情卡片**自动保存**：去掉底部「保存/取消」按钮——输入防抖 600ms 自动落盘（与随记一致），关闭（× / 点遮罩 / ESC / 切换工作区）时冲刷未保存内容；标题清空则不保存（保留原标题）；头部显示「保存中…/已保存」状态，元信息行的更新时间随保存刷新。原型同步。
