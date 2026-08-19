@@ -1,0 +1,9 @@
+# 统一 LF 行尾，避免 Windows 下 CRLF 转换告警与无意义 diff
+* text=auto
+*.ts text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.html text eol=lf

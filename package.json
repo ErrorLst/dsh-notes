@@ -1,7 +1,7 @@
 {
   "name": "@dsh-external/dsh-notes",
   "description": "侧栏与对话区之间的全高竖栏：上半常驻会话卡片（直接对话/预设/模型），下半小计（全局+工作区 todo/随记，DSH 主题令牌适配）",
-  "version": "0.2.0",
+  "version": "0.4.25",
   "private": true,
   "type": "module",
   "main": "lib/index.mjs",
