@@ -24,7 +24,6 @@
     "client": {
       "inject": [
         "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-client-ui-sidebar",
         "@deepseek-ai/dsh-client-ui-primitives"
       ],
       "platform": "web"
@@ -34,13 +33,11 @@
     "build": "tsdown --config ./tsdown.config.ts"
   },
   "peerDependencies": {
-    "cordis": "^4.0.0-rc.7"
+    "@deepseek-ai/cordis": "^4.0.1"
   },
   "devDependencies": {
-    "tsdown": "0.22.2"
-  },
-  "license": "MIT",
-  "dependencies": {
+    "tsdown": "0.22.2",
     "marked": "^18.0.9"
-  }
+  },
+  "license": "MIT"
 }
