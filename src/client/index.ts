@@ -74,7 +74,6 @@ try {
 } catch { /* 无内置渲染 */ }
 
 const STYLE_TAG_ID = 'dsh-notes-dock-style'
-const COLLAPSED_KEY = 'dsh-notes.collapsed'
 const SPLIT_KEY = 'dsh-notes.split'
 const SPLIT_DEFAULT = 46
 const SPLIT_MIN = 25
@@ -93,10 +92,6 @@ const ICON_TRASH =
   '<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h10M5.5 4V2.8A.8.8 0 016.3 2h1.4a.8.8 0 01.8.8V4M3.5 4l.6 7a1 1 0 001 1h3.8a1 1 0 001-1l.6-7"/><path d="M6 6.5v3M8 6.5v3"/></svg>'
 const ICON_PIN =
   '<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8.6 1.4l4 4-1.4 1.4-1.2-.6-2.2 2.2.6 1.2-1.4 1.4-3-3L3.4 9l-.8-.8 2.6-2.6-1.2-.6 1.4-1.4 1.2.6 2.2-2.2-.6-1.2 1.4-1.4z"/></svg>'
-const ICON_COLLAPSE =
-  '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4.5L6 8.5l4-4"/></svg>'
-const ICON_EXPAND =
-  '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7.5L6 3.5l4 4"/></svg>'
 const ICON_GRIP =
   '<svg viewBox="0 0 10 16" fill="currentColor"><circle cx="2.5" cy="2.5" r="1.4"/><circle cx="7.5" cy="2.5" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13.5" r="1.4"/><circle cx="7.5" cy="13.5" r="1.4"/></svg>'
 const ICON_GEAR =
@@ -143,39 +138,13 @@ const DOCK_CSS = `
 body[data-ds-dark-theme] .dsh-notes-dock {
   --dsh-notes-shadow: 0 8px 28px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
 }
-.dsh-notes-dock.collapsed {
-  width: auto;
-  height: auto;
-  top: auto;
-  bottom: 0;
-  background: transparent;
-  border-right: none;
-}
-.dsh-notes-dock.collapsed .dock-body { display: none; }
+/* 非对话视图（如轨迹）激活时隐藏整条竖栏，避免遮挡页面内容 */
+.dsh-notes-dock.view-hidden { display: none; }
 /* 复位规则用 :where() 保证零特异性，绝不覆盖任何组件类样式 */
 :where(.dsh-notes-dock) button { font-family: inherit; font-size: inherit; border: none; background: none; color: inherit; cursor: pointer; }
 :where(.dsh-notes-dock) input { font-family: inherit; font-size: inherit; color: inherit; }
 :where(.dsh-notes-dock) textarea { font-family: inherit; font-size: inherit; color: inherit; }
 :where(.dsh-notes-dock) select { font-family: inherit; font-size: inherit; color: inherit; }
-
-.dock-collapsed {
-  display: none;
-  align-items: center;
-  gap: 6px;
-  margin: 0 8px 8px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: var(--dsw-alias-bg-overlay);
-  border: 1px solid var(--dsw-alias-border-l2);
-  box-shadow: var(--dsh-notes-shadow);
-  font-size: 11.5px;
-  color: var(--dsw-alias-label-secondary);
-  white-space: nowrap;
-  transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
-}
-.dsh-notes-dock.collapsed .dock-collapsed { display: flex; }
-.dock-collapsed:hover { background: var(--dsw-alias-interactive-bg-hover-solid); color: var(--dsw-alias-label-primary); }
-.dock-collapsed svg { width: 11px; height: 11px; }
 
 .dock-body { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 
@@ -207,6 +176,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
 .sc-head .spacer,
 .np-head .spacer { flex: 1; }
 .sc-btn {
@@ -754,7 +724,6 @@ button.ds-leading { cursor: pointer; }
   z-index: 6;
 }
 .dsh-notes-dock.resize-dragging { user-select: none; -webkit-user-select: none; cursor: col-resize; }
-.dsh-notes-dock.collapsed .dock-resizer { display: none; }
 
 /* ===== 下半：小计 ===== */
 .np-section { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
@@ -1615,9 +1584,8 @@ function NotesDock(props) {
   const scInputRef = useRef(null)
   const [left, setLeft] = useState(260)
   const [top, setTop] = useState(0)
-  const [collapsed, setCollapsed] = useState(() => {
-    try { return localStorage.getItem(COLLAPSED_KEY) === '1' } catch { return false }
-  })
+  // 当前会话视图是否为「对话」（false 时隐藏整条竖栏，见定位 effect 的 detectChatView）
+  const [viewIsChat, setViewIsChat] = useState(true)
   const [split, setSplit] = useState(() => {
     try {
       const value = Number(localStorage.getItem(SPLIT_KEY))
@@ -1766,8 +1734,27 @@ function NotesDock(props) {
       const baseRect = base.getBoundingClientRect()
       setTop(Math.max(0, baseRect.top - frameRect.top))
     }
+    // 当前视图是否为「对话」：竖栏只在对话视图显示，切换轨迹等其他视图时隐藏，
+    // 避免遮挡页面内容。判定链（对话 tab 恒为 conversation.view 首个条目 order 0）：
+    //   1) tab 栏（role=tablist）存在时：激活 tab 必须是第一个 tab（对话），
+    //      否则为轨迹/上下文等非对话视图 —— tab 栏是当前视图的权威信号
+    //   2) 无 tab 栏（hero/无会话/仅对话视图）→ 视为对话页
+    const detectChatView = () => {
+      if (center === null) return true
+      try {
+        const tablist = center.querySelector('[role="tablist"]')
+        if (tablist !== null) {
+          const tabs = tablist.querySelectorAll('[role="tab"]')
+          const active = tablist.querySelector('[role="tab"][aria-selected="true"]')
+          if (active === null || tabs.length === 0) return true
+          return active === tabs[0]
+        }
+      } catch { return true }
+      return true
+    }
     updateLeft()
     updateTop()
+    setViewIsChat(detectChatView())
     let raf = 0
     const scheduleUpdate = () => {
       if (raf !== 0) return
@@ -1776,6 +1763,7 @@ function NotesDock(props) {
         scrollEl = findScrollBody()
         updateLeft()
         updateTop()
+        setViewIsChat(detectChatView())
       })
     }
     const onResize = scheduleUpdate
@@ -1798,8 +1786,17 @@ function NotesDock(props) {
     if (center !== null) {
       // class/data-phase 用于会话头部显隐（wSkVaW_headerHidden / root data-phase），
       // 这些变化不产生 childList 时也必须能触发 top 重测。
-      observer.observe(center, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'data-phase'] })
+      observer.observe(center, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'data-phase', 'aria-selected'] })
     }
+    // 兜底 1：tab 点击必然触发（捕获阶段监听，与 React 渲染无关）；
+    // 点击事件先于视图重渲染到达，rAF 中重检时 DOM 已切换完成。
+    const onTabClick = (event) => {
+      const target = event.target
+      if (target instanceof Element && target.closest('[role="tab"]') !== null) scheduleUpdate()
+    }
+    document.addEventListener('click', onTabClick, true)
+    // 兜底 2：低频轮询重检（1.5s 一次，任何事件机制失效时仍收敛）
+    const recheckTimer = setInterval(scheduleUpdate, 1500)
     let ro = null
     if (typeof ResizeObserver !== 'undefined') {
       ro = new ResizeObserver(onResize)
@@ -1811,6 +1808,8 @@ function NotesDock(props) {
     return () => {
       if (raf !== 0) cancelAnimationFrame(raf)
       observer.disconnect()
+      document.removeEventListener('click', onTabClick, true)
+      clearInterval(recheckTimer)
       if (ro !== null) ro.disconnect()
       window.removeEventListener('resize', onResize)
     }
@@ -1936,29 +1935,10 @@ function NotesDock(props) {
       })
   }
 
-  /* ---------- 折叠 ---------- */
-  /* 折叠/展开会卸载触发提示的按钮（mouseout 随元素消失），提示框会卡在旧位置——
-     必须先隐藏；pointerdown 兜底覆盖一切会卸载按钮的点击 */
-  function collapse() {
-    hideTip()
-    saveMemoNow()
-    setCollapsed(true)
-    try { localStorage.setItem(COLLAPSED_KEY, '1') } catch { /* ignore */ }
-  }
-  function expand() {
-    hideTip()
-    setCollapsed(false)
-    try { localStorage.setItem(COLLAPSED_KEY, '0') } catch { /* ignore */ }
-    requestAnimationFrame(() => { inputRef.current?.focus() })
-  }
+  /* ---------- 折叠（v0.4.28 起移除：竖栏在对话页始终展开显示） ---------- */
   function onDockPointerDown() {
     hideTip()
   }
-  /* 折叠/展开切换后兜底隐藏提示（折叠/展开树根级子元素带 key，np-tip 按 key 复用，
-     不会被原地改造成 dock-resizer 而残留文字/坐标；这里再兜底一次） */
-  useLayoutEffect(() => {
-    hideTip()
-  }, [collapsed])
 
   /* ---------- 待办动作 ---------- */
   function addTodo() {
@@ -2189,9 +2169,9 @@ function NotesDock(props) {
     return result
   }, [])
 
-  /* 轮询：展开时运行中 400ms（瀑布流） / 空闲 3s */
+  /* 轮询：运行中 400ms（瀑布流） / 空闲 3s；非对话视图隐藏时不轮询 */
   useEffect(() => {
-    if (collapsed) return
+    if (!viewIsChat) return
     let alive = true
     let timer = null
     const schedule = (delay) => {
@@ -2206,7 +2186,7 @@ function NotesDock(props) {
       alive = false
       if (timer !== null) clearTimeout(timer)
     }
-  }, [collapsed, fetchChat])
+  }, [viewIsChat, fetchChat])
 
   /* 瀑布流跟随：内容增长时若停留在底部则自动滚到底（与官方 ChatView 一致）；
      发送后强制跟随一次；展开时若本就在底部也滚到底。 */
@@ -2218,7 +2198,7 @@ function NotesDock(props) {
       atBottomRef.current = true
     }
     forceFollowRef.current = false
-  }, [chat, collapsed])
+  }, [chat])
 
   function onScMsgScroll() {
     const el = scMsgRef.current
@@ -2227,11 +2207,10 @@ function NotesDock(props) {
     atBottomRef.current = floor - el.scrollTop <= 24
   }
 
-  /* 展开/挂载时刷新卡片状态 */
+  /* 挂载时刷新卡片状态 */
   useEffect(() => {
-    if (collapsed) return
     void refreshCard()
-  }, [collapsed, refreshCard])
+  }, [refreshCard])
 
   async function sendMessage() {
     const input = scInputRef.current
@@ -2369,31 +2348,6 @@ function NotesDock(props) {
 
   /* ---------- 渲染 ---------- */
   const dockStyle = { left: `${left}px`, top: `${top}px`, width: `${width}px`, '--sc-ratio': `${split}%` }
-
-  if (collapsed) {
-    return React.createElement(
-      'div',
-      {
-        className: 'dsh-notes-dock collapsed',
-        'data-notes-ver': '01cfad4',
-        ref: rootRef,
-        // 折叠态贴底：显式 top auto，覆盖测量出的顶部偏移
-        style: { left: `${left}px`, top: 'auto' },
-        onMouseOver: onTipOver,
-        onMouseMove: onTipMove,
-        onMouseOut: onTipOut,
-        onPointerDown: onDockPointerDown,
-      },
-      React.createElement(
-        'button',
-        { key: 'pill', className: 'dock-collapsed', type: 'button', 'data-tip': '展开小记', onClick: expand },
-        React.createElement('span', null, '📝'),
-        React.createElement('span', null, '小记'),
-        React.createElement('span', { dangerouslySetInnerHTML: { __html: ICON_EXPAND } }),
-      ),
-      React.createElement('div', { key: 'tip', className: 'np-tip', ref: tipRef, hidden: true }),
-    )
-  }
 
   const scope = tab === 'workspace' && data.workspace === null ? null : scopeOf(data, tab)
   const todos = scope === null ? [] : scope.todos
@@ -2660,8 +2614,8 @@ function NotesDock(props) {
   return React.createElement(
     'div',
     {
-      className: 'dsh-notes-dock',
-      'data-notes-ver': '01cfad4',
+      className: 'dsh-notes-dock' + (viewIsChat ? '' : ' view-hidden'),
+      'data-notes-ver': '04c8f3',
       ref: (node) => {
         rootRef.current = node
         dockRef.current = node
@@ -2692,13 +2646,6 @@ function NotesDock(props) {
             'data-tip': '设置（预设/模型/思考等级）',
             onClick: () => setPopupOpen((prev) => !prev),
             dangerouslySetInnerHTML: { __html: ICON_GEAR },
-          }),
-          React.createElement('button', {
-            type: 'button',
-            className: 'sc-btn',
-            'data-tip': '折叠小记',
-            onClick: collapse,
-            dangerouslySetInnerHTML: { __html: ICON_COLLAPSE },
           }),
         ),
         React.createElement('div', { ref: scMsgRef, className: 'sc-messages', onScroll: onScMsgScroll }, ...chatRows),
