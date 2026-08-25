@@ -34,6 +34,7 @@ export const inject = ['webServer']
 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { RESIDENT_PRESET_YML, RESIDENT_AGENT_CORDIS_YML } from './resident-preset.mjs'
 
 const TODO_TEXT_MAX = 500
 const DETAIL_MAX = 20000
@@ -42,6 +43,8 @@ const ROUTE_PATH = '/api/dsh-notes'
 const UNDO_CAP = 100
 const TRANSCRIPT_LIMIT = 200
 const RESIDENT_TMP_SUBDIR = 'dsh-notes-resident'
+// 常驻会话固定预置：resident（基于 standard，禁用 ask 等网页弹窗交互工具）
+const RESIDENT_PRESET_ID = 'resident'
 
 const passthroughSchema = {
   parse(value) {
@@ -485,6 +488,34 @@ function setupScard(ctx) {
     }
   }
 
+  /* ---- 常驻专用预置（resident）自部署 ----
+   * 预置内容内嵌于 src/resident-preset.mjs；缺失或内容不一致时写入
+   * ~/.dsh/.agent-presets/resident/（与 code-pipeline 同一目录，roster 动态读取）。
+   * 每个进程只尝试一次（presetFilesEnsured）。 */
+  let presetFilesEnsured = false
+  async function ensureResidentPresetFiles() {
+    if (presetFilesEnsured) return
+    presetFilesEnsured = true
+    const root = sandboxPolicy === undefined ? undefined : sandboxPolicy.workspaceRoot
+    if (fs === undefined || typeof fs.resolve !== 'function' || typeof root !== 'string' || root === '') return
+    const dir = join(root, '.agent-presets', 'resident')
+    await maybeWrite('preset.yml', RESIDENT_PRESET_YML)
+    await maybeWrite('agent.cordis.yml', RESIDENT_AGENT_CORDIS_YML)
+    async function maybeWrite(name, content) {
+      try {
+        const target = await fs.resolve(join(dir, name))
+        try {
+          const existing = await fs.readText(target)
+          if (existing === content) return
+        } catch { /* 缺失/不可读 → 写入 */ }
+        await fs.writeText(target, content)
+        ctx.logger.info(`[dsh-notes] provisioned resident preset: ${name}`)
+      } catch (error) {
+        ctx.logger.warn(`[dsh-notes] failed to provision resident preset ${name}: ${String(error)}`)
+      }
+    }
+  }
+
   /* ---- 常驻会话工作目录：恒为系统临时目录下的 dsh-notes-resident（不可配置） ----
    * cwd 在会话创建时写入 header（工具与 {{cwd}} 提示词变量都读 header.cwd，
    * 无法事后修改）；每次新会话都在临时目录。 */
@@ -502,7 +533,6 @@ function setupScard(ctx) {
   /* ---- 运行态 ---- */
   const overrides = new Map() // sessionId -> { provider, model, effort? }
   const revisions = new Map() // sessionId -> number（仅递增计数）
-  const presetChains = new Map() // sessionId -> promise（预设切换串行化）
   let residentPromise = null // ensureResident 单飞
   /** 常驻会话持久化设置（读状态文件获得；scard-select-preset/model 更新并落盘） */
   let residentSettings = {}
@@ -604,7 +634,7 @@ function setupScard(ctx) {
     const sessionId = 'sesscard-' + Math.random().toString(36).slice(2, 10)
     const cwd = residentCwd()
     const selection = persistedSelection() ?? defaultSelection()
-    const presetId = typeof residentSettings.presetId === 'string' && residentSettings.presetId !== '' ? residentSettings.presetId : undefined
+    const presetId = RESIDENT_PRESET_ID
     let handle
     let fallback = false
     try {
@@ -640,23 +670,6 @@ function setupScard(ctx) {
     return sessionId
   }
 
-  /** 从持久化记录折叠预设 id（冷会话恢复时 setup 用；失败返回 undefined = 挂默认）。 */
-  async function foldedPresetFromPersistence(id) {
-    if (sessionPersistence === undefined || typeof sessionPersistence.inspect !== 'function') return undefined
-    try {
-      const record = await sessionPersistence.inspect(id)
-      const source = record?.session ?? record
-      const events = Array.isArray(source?.events) ? source.events : []
-      for (let i = events.length - 1; i >= 0; i--) {
-        const ev = events[i]
-        if (ev?.type === 'agent-preset/selected' && typeof ev.data?.agentPreset === 'string') return ev.data.agentPreset
-      }
-      const header = source?.requestHeader ?? source?.header
-      if (header && typeof header.agentPreset === 'string') return header.agentPreset
-    } catch { /* ignore */ }
-    return undefined
-  }
-
   async function resumeAgent(id) {
     const existing = agents.get(id)
     if (existing !== undefined) {
@@ -664,8 +677,7 @@ function setupScard(ctx) {
       return existing
     }
     const selection = persistedSelection() ?? defaultSelection()
-    let presetId = typeof residentSettings.presetId === 'string' && residentSettings.presetId !== '' ? residentSettings.presetId : undefined
-    presetId ??= await foldedPresetFromPersistence(id)
+    const presetId = RESIDENT_PRESET_ID
     const handle = await agents.resume({
       resumeSessionId: id,
       ...(selection === undefined ? {} : { agentOptions: selection }),
@@ -681,12 +693,17 @@ function setupScard(ctx) {
   function ensureResident() {
     residentPromise ??= (async () => {
       const state = await readStateFile()
+      // 预设固定为 resident（忽略旧状态文件中的任意 presetId；不一致则迁移落盘）
       residentSettings = {
-        ...(state?.presetId === undefined ? {} : { presetId: state.presetId }),
+        presetId: RESIDENT_PRESET_ID,
         ...(state?.provider === undefined ? {} : { provider: state.provider }),
         ...(state?.model === undefined ? {} : { model: state.model }),
         ...(state?.effort === undefined ? {} : { effort: state.effort }),
       }
+      if (state?.sessionId !== undefined && state?.presetId !== RESIDENT_PRESET_ID) {
+        await writeStateFile(state.sessionId, residentSettings)
+      }
+      await ensureResidentPresetFiles()
       let id = state?.sessionId
       if (id !== undefined && sessionPersistence !== undefined) {
         try {
@@ -1176,42 +1193,11 @@ function setupScard(ctx) {
     return { ok: true, scard: { sessionId: id, ...foldTranscript(agent.session) } }
   }
 
-  async function scardSelectPreset(body) {
+  async function scardSelectPreset() {
+    // 预设固定为 resident（常驻专用，禁用 ask 等弹窗交互工具）——不接受切换
     const id = await ensureResident()
     if (id === null) return { ok: false, error: 'scard-unavailable' }
-    const presetId = typeof body.presetId === 'string' ? body.presetId : ''
-    if (presetId === '') return { ok: false, error: { code: 'bad-args', message: 'presetId required' } }
-    let agent
-    try {
-      agent = agents.get(id) ?? (await resumeAgent(id))
-    } catch (error) {
-      return { ok: false, error: { code: 'resume-failed', message: String(error?.message ?? error) } }
-    }
-    const session = agent.session
-    if (session.events.some((ev) => ev.type === 'turn/start')) {
-      return { ok: false, error: { code: 'locked', message: '会话已开始，预设已锁定' } }
-    }
-    const prev = presetChains.get(id) ?? Promise.resolve()
-    const run = prev.then(async () => {
-      try {
-        await agentPresets.recompose(agent.ctx, presetId)
-      } catch (error) {
-        const name = error?.name ?? ''
-        if (name === 'UnknownPresetError') return { ok: false, error: { code: 'unknown', message: '预设不存在' } }
-        if (name === 'PresetMountError') return { ok: false, error: { code: 'invalid', message: String(error?.message ?? error) } }
-        return { ok: false, error: { code: 'not-attached', message: String(error?.message ?? error) } }
-      }
-      try {
-        await session.append('agent-preset/selected', { agentPreset: presetId })
-      } catch (error) {
-        ctx.logger.warn(`[dsh-notes] append agent-preset/selected failed: ${String(error)}`)
-      }
-      residentSettings.presetId = presetId
-      await writeStateFile(id, residentSettings)
-      return { ok: true, presetId }
-    })
-    presetChains.set(id, run.then(() => {}, () => {}))
-    return run
+    return { ok: false, error: { code: 'locked', message: '常驻会话预设已固定为 resident（禁用弹窗交互工具），不可切换' } }
   }
 
   async function scardSelectModel(body) {

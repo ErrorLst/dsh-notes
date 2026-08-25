@@ -9,7 +9,7 @@
 //      MutationObserver/ResizeObserver 跟随侧栏折叠/拖拽与会话头部高度变化。
 //   2. 竖栏内容（自上而下）：
 //      - 上半：常驻会话卡片 —— 消息列表/输入发送/停止/流式 partial（轮询
-//        scard-chat-state 400ms/3s（运行中 400ms，瀑布流跟随滚动））、⚙ 设置弹窗（预设/模型/思考等级）、
+//        scard-chat-state 400ms/3s（运行中 400ms，瀑布流跟随滚动））、⚙ 设置弹窗（模型/思考等级；预设固定 resident）、
 //        清空会话（归档+新建）；
 //        发送/停止走 sessions.binding(id).session.prompt/cancel（wire RPC）。
 //      - 分隔条：拖拽调整上下比例（25%–75%，双击复位 46%），localStorage 持久化。
@@ -2259,13 +2259,6 @@ function NotesDock(props) {
     }
   }
 
-  function onPresetChange(event) {
-    void scardPost('scard-select-preset', { presetId: event.target.value }).then((result) => {
-      if (result.ok !== true) setCardError(result.error?.message ?? '预设切换失败')
-      void refreshCard()
-    })
-  }
-
   function onModelChange(event) {
     const parts = event.target.value.split('/')
     const provider = parts[0]
@@ -2499,16 +2492,7 @@ function NotesDock(props) {
     }
   }
 
-  /* ---- 会话卡片：⚙ 设置弹窗字段 ---- */
-  const presetOptions = card === null || !Array.isArray(card.presets)
-    ? []
-    : card.presets.map((preset) =>
-        React.createElement(
-          'option',
-          { key: preset.id, value: preset.id, disabled: preset.broken === true },
-          preset.name ?? preset.id + (preset.isDefault === true ? '（默认）' : ''),
-        ),
-      )
+  /* ---- 会话卡片：⚙ 设置弹窗字段（预设固定为 resident，不提供切换） ---- */
   const modelGroups = card === null || !Array.isArray(card.catalog)
     ? []
     : card.catalog.map((provider) =>
@@ -2609,13 +2593,13 @@ function NotesDock(props) {
   const running = chat !== null && chat.cold !== true && chat.running === true
   const statusText = running
     ? '运行中…'
-    : (card === null ? '加载中…' : (card.blank === true ? '空白 · 预设可切换' : '已开始 · 预设已锁定'))
+    : (card === null ? '加载中…' : (card.blank === true ? '空白 · 固定预设' : '已开始'))
 
   return React.createElement(
     'div',
     {
       className: 'dsh-notes-dock' + (viewIsChat ? '' : ' view-hidden'),
-      'data-notes-ver': '04c8f3',
+      'data-notes-ver': '06a3d2',
       ref: (node) => {
         rootRef.current = node
         dockRef.current = node
@@ -2643,7 +2627,7 @@ function NotesDock(props) {
           React.createElement('button', {
             type: 'button',
             className: 'sc-btn',
-            'data-tip': '设置（预设/模型/思考等级）',
+            'data-tip': '设置（模型/思考等级）',
             onClick: () => setPopupOpen((prev) => !prev),
             dangerouslySetInnerHTML: { __html: ICON_GEAR },
           }),
@@ -2723,15 +2707,8 @@ function NotesDock(props) {
                 React.createElement(
                   'div',
                   { className: 'sc-field' },
-                  React.createElement('label', null, '选择预设'),
-                  React.createElement('select', {
-                    value: card !== null ? (card.presetId ?? '') : '',
-                    disabled: card === null || card.presetLocked === true,
-                    onChange: onPresetChange,
-                  }, ...presetOptions),
-                  card !== null && card.presetLocked === true
-                    ? React.createElement('span', { className: 'sc-popup-hint' }, '会话已开始，预设已锁定')
-                    : null,
+                  React.createElement('label', null, '预设 · 常驻专用（已固定）'),
+                  React.createElement('span', { className: 'sc-popup-hint' }, '固定为 resident 预置：ask_user_question 等网页弹窗交互工具已禁用'),
                 ),
                 React.createElement(
                   'div',
