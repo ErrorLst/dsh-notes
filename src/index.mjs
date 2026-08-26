@@ -498,7 +498,7 @@ function setupScard(ctx) {
     presetFilesEnsured = true
     const root = sandboxPolicy === undefined ? undefined : sandboxPolicy.workspaceRoot
     if (fs === undefined || typeof fs.resolve !== 'function' || typeof root !== 'string' || root === '') return
-    const dir = join(root, '.agent-presets', 'resident')
+    const dir = join(root, '.dsh', '.agent-presets', 'resident')
     await maybeWrite('preset.yml', RESIDENT_PRESET_YML)
     await maybeWrite('agent.cordis.yml', RESIDENT_AGENT_CORDIS_YML)
     async function maybeWrite(name, content) {
