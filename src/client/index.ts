@@ -2599,7 +2599,7 @@ function NotesDock(props) {
     'div',
     {
       className: 'dsh-notes-dock' + (viewIsChat ? '' : ' view-hidden'),
-      'data-notes-ver': '06a3d2',
+      'data-notes-ver': '07b4e1',
       ref: (node) => {
         rootRef.current = node
         dockRef.current = node
@@ -2655,12 +2655,12 @@ function NotesDock(props) {
         React.createElement(
           'div',
           { className: 'sc-foot' },
-          React.createElement('button', { type: 'button', className: 'sc-clear', onClick: () => { if (!running) setConfirming(true) } }, '清空会话'),
+          React.createElement('button', { type: 'button', className: 'sc-clear', onClick: () => setConfirming(true) }, '清空会话'),
           confirming
             ? React.createElement(
                 'span',
                 { className: 'sc-confirm' },
-                '确认清空？',
+                running ? '确认清空？将中断当前回合' : '确认清空？',
                 React.createElement('button', { type: 'button', className: 'yes', onClick: confirmClear }, '确认'),
                 React.createElement('button', { type: 'button', className: 'no', onClick: () => setConfirming(false) }, '取消'),
               )

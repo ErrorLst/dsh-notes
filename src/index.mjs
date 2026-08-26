@@ -1233,7 +1233,17 @@ function setupScard(ctx) {
     if (id === null) return { ok: false, error: 'scard-unavailable' }
     const agent = agents.get(id)
     if (agent !== undefined && agent.status === 'running') {
-      return { ok: false, error: { code: 'running', message: '会话运行中，不能清空' } }
+      // 运行中清空：先取消当前回合（agent 即 loop driver），等待回合沉降后再归档新建
+      try {
+        if (typeof agent.cancel === 'function') agent.cancel(new Error('常驻会话已清空'))
+        else ctx.logger.warn('[dsh-notes] resident agent has no cancel(); clearing without stopping the turn')
+      } catch (error) {
+        ctx.logger.warn(`[dsh-notes] cancel running resident failed: ${String(error)}`)
+      }
+      const deadline = Date.now() + 5000
+      while (agent.status === 'running' && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
     }
     try {
       if (workspaceRegistry !== undefined) await workspaceRegistry.archiveSession(id)
