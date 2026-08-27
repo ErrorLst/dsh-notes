@@ -458,6 +458,11 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   line-height: 1.5;
   resize: none;
   outline: none;
+  /* 行尾空格正确断行：anywhere 允许在任何字符（含空格）处断行，
+     解决"行尾输入空格越过行宽而不换行"的问题（break-word 不覆盖该场景） */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
   transition: border-color var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
 }
 .np-memo::placeholder { color: var(--dsw-alias-label-tertiary); }
@@ -1201,7 +1206,7 @@ function NotesDock(props) {
     'div',
     {
       className: 'dsh-notes-dock' + (viewIsChat ? '' : ' view-hidden') + (covered ? ' covered-hidden' : ''),
-      'data-notes-ver': '17b4e2',
+      'data-notes-ver': '18c5f3',
       ref: (node) => {
         rootRef.current = node
         dockRef.current = node
