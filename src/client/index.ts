@@ -92,6 +92,10 @@ const ICON_TRASH =
   '<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h10M5.5 4V2.8A.8.8 0 016.3 2h1.4a.8.8 0 01.8.8V4M3.5 4l.6 7a1 1 0 001 1h3.8a1 1 0 001-1l.6-7"/><path d="M6 6.5v3M8 6.5v3"/></svg>'
 const ICON_PIN =
   '<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8.6 1.4l4 4-1.4 1.4-1.2-.6-2.2 2.2.6 1.2-1.4 1.4-3-3L3.4 9l-.8-.8 2.6-2.6-1.2-.6 1.4-1.4 1.2.6 2.2-2.2-.6-1.2 1.4-1.4z"/></svg>'
+const ICON_COLLAPSE =
+  '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4.5L6 8.5l4-4"/></svg>'
+const ICON_EXPAND =
+  '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7.5L6 3.5l4 4"/></svg>'
 const ICON_GRIP =
   '<svg viewBox="0 0 10 16" fill="currentColor"><circle cx="2.5" cy="2.5" r="1.4"/><circle cx="7.5" cy="2.5" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13.5" r="1.4"/><circle cx="7.5" cy="13.5" r="1.4"/></svg>'
 const ICON_GEAR =
@@ -138,6 +142,34 @@ const DOCK_CSS = `
 body[data-ds-dark-theme] .dsh-notes-dock {
   --dsh-notes-shadow: 0 8px 28px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
 }
+/* 窄窗口（<1024px，与 DSH 侧栏自动收起同阈值）：自动折叠成底部小胶囊 */
+.dsh-notes-dock.collapsed {
+  width: auto;
+  height: auto;
+  top: auto;
+  bottom: 0;
+  background: transparent;
+  border-right: none;
+}
+.dsh-notes-dock.collapsed .dock-body { display: none; }
+.dock-collapsed {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin: 0 8px 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-overlay);
+  border: 1px solid var(--dsw-alias-border-l2);
+  box-shadow: var(--dsh-notes-shadow);
+  font-size: 11.5px;
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+  transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
+}
+.dsh-notes-dock.collapsed .dock-collapsed { display: flex; }
+.dock-collapsed:hover { background: var(--dsw-alias-interactive-bg-hover-solid); color: var(--dsw-alias-label-primary); }
+.dock-collapsed svg { width: 11px; height: 11px; }
 /* 非对话视图（如轨迹）激活时隐藏整条竖栏，避免遮挡页面内容 */
 .dsh-notes-dock.view-hidden { display: none; }
 /* 复位规则用 :where() 保证零特异性，绝不覆盖任何组件类样式 */
@@ -724,6 +756,7 @@ button.ds-leading { cursor: pointer; }
   z-index: 6;
 }
 .dsh-notes-dock.resize-dragging { user-select: none; -webkit-user-select: none; cursor: col-resize; }
+.dsh-notes-dock.collapsed .dock-resizer { display: none; }
 
 /* ===== 下半：小计 ===== */
 .np-section { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
@@ -1586,6 +1619,10 @@ function NotesDock(props) {
   const [top, setTop] = useState(0)
   // 当前会话视图是否为「对话」（false 时隐藏整条竖栏，见定位 effect 的 detectChatView）
   const [viewIsChat, setViewIsChat] = useState(true)
+  // 窄窗口自动折叠：窗口宽度 < 1024（与 DSH 侧栏自动收起同阈值）时收起为底部小胶囊；
+  // 点击胶囊可临时展开（userExpanded），回到宽窗口后恢复始终展开
+  const [narrow, setNarrow] = useState(false)
+  const [userExpanded, setUserExpanded] = useState(false)
   const [split, setSplit] = useState(() => {
     try {
       const value = Number(localStorage.getItem(SPLIT_KEY))
@@ -1644,6 +1681,11 @@ function NotesDock(props) {
   const scMsgRef = useRef(null) // 消息列表滚动容器（瀑布流跟随）
   const atBottomRef = useRef(true) // 用户是否停留在底部（跟随滚动依据）
   const forceFollowRef = useRef(false) // 发送后强制滚到底一次
+
+  /* 回到宽窗口：取消临时展开，竖栏恢复始终展开（无折叠按钮） */
+  useEffect(() => {
+    if (!narrow) setUserExpanded(false)
+  }, [narrow])
 
   /* ---------- 自定义悬浮提示 ---------- */
   function tipElOf(target) {
@@ -1727,6 +1769,10 @@ function NotesDock(props) {
       const px = parseFloat(columns[0])
       if (Number.isFinite(px)) setLeft(px)
     }
+    const updateNarrow = () => {
+      const next = frame.getBoundingClientRect().width < 1024
+      setNarrow((prev) => (prev === next ? prev : next))
+    }
     const updateTop = () => {
       const base = scrollEl ?? center?.firstElementChild ?? null
       if (base === null) return
@@ -1754,6 +1800,7 @@ function NotesDock(props) {
     }
     updateLeft()
     updateTop()
+    updateNarrow()
     setViewIsChat(detectChatView())
     let raf = 0
     const scheduleUpdate = () => {
@@ -1763,6 +1810,7 @@ function NotesDock(props) {
         scrollEl = findScrollBody()
         updateLeft()
         updateTop()
+        updateNarrow()
         setViewIsChat(detectChatView())
       })
     }
@@ -2171,7 +2219,7 @@ function NotesDock(props) {
 
   /* 轮询：运行中 400ms（瀑布流） / 空闲 3s；非对话视图隐藏时不轮询 */
   useEffect(() => {
-    if (!viewIsChat) return
+    if (!viewIsChat || (narrow && !userExpanded)) return
     let alive = true
     let timer = null
     const schedule = (delay) => {
@@ -2186,7 +2234,7 @@ function NotesDock(props) {
       alive = false
       if (timer !== null) clearTimeout(timer)
     }
-  }, [viewIsChat, fetchChat])
+  }, [viewIsChat, narrow, userExpanded, fetchChat])
 
   /* 瀑布流跟随：内容增长时若停留在底部则自动滚到底（与官方 ChatView 一致）；
      发送后强制跟随一次；展开时若本就在底部也滚到底。 */
@@ -2341,6 +2389,32 @@ function NotesDock(props) {
 
   /* ---------- 渲染 ---------- */
   const dockStyle = { left: `${left}px`, top: `${top}px`, width: `${width}px`, '--sc-ratio': `${split}%` }
+  // 窄窗口自动折叠（无手动折叠/持久化；点击胶囊临时展开，回宽窗口恢复）
+  const autoCollapsed = narrow && !userExpanded
+
+  if (autoCollapsed) {
+    return React.createElement(
+      'div',
+      {
+        className: 'dsh-notes-dock collapsed' + (viewIsChat ? '' : ' view-hidden'),
+        'data-notes-ver': '08c5f2',
+        ref: rootRef,
+        style: { left: `${left}px`, top: 'auto' },
+        onMouseOver: onTipOver,
+        onMouseMove: onTipMove,
+        onMouseOut: onTipOut,
+        onPointerDown: onDockPointerDown,
+      },
+      React.createElement(
+        'button',
+        { key: 'pill', className: 'dock-collapsed', type: 'button', 'data-tip': '展开小记', onClick: () => setUserExpanded(true) },
+        React.createElement('span', null, '📝'),
+        React.createElement('span', null, '小记'),
+        React.createElement('span', { dangerouslySetInnerHTML: { __html: ICON_EXPAND } }),
+      ),
+      React.createElement('div', { key: 'tip', className: 'np-tip', ref: tipRef, hidden: true }),
+    )
+  }
 
   const scope = tab === 'workspace' && data.workspace === null ? null : scopeOf(data, tab)
   const todos = scope === null ? [] : scope.todos
@@ -2599,7 +2673,7 @@ function NotesDock(props) {
     'div',
     {
       className: 'dsh-notes-dock' + (viewIsChat ? '' : ' view-hidden'),
-      'data-notes-ver': '07b4e1',
+      'data-notes-ver': '08c5f2',
       ref: (node) => {
         rootRef.current = node
         dockRef.current = node
@@ -2631,6 +2705,15 @@ function NotesDock(props) {
             onClick: () => setPopupOpen((prev) => !prev),
             dangerouslySetInnerHTML: { __html: ICON_GEAR },
           }),
+          narrow && userExpanded
+            ? React.createElement('button', {
+                type: 'button',
+                className: 'sc-btn',
+                'data-tip': '收起小记（回到胶囊）',
+                onClick: () => setUserExpanded(false),
+                dangerouslySetInnerHTML: { __html: ICON_COLLAPSE },
+              })
+            : null,
         ),
         React.createElement('div', { ref: scMsgRef, className: 'sc-messages', onScroll: onScMsgScroll }, ...chatRows),
         cardError === null
