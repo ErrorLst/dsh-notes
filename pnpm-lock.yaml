@@ -12,9 +12,6 @@ importers:
         specifier: ^4.0.1
         version: 4.0.1
     devDependencies:
-      marked:
-        specifier: ^18.0.9
-        version: 18.0.9
       tsdown:
         specifier: 0.22.2
         version: 0.22.2
@@ -268,11 +265,6 @@ packages:
   jsesc@3.1.0:
     resolution: {integrity: sha512-/sM3dO2FOzXjKQhJuo0Q173wf2KOo8t4I8vHy6lF9poUp7bKT0/NHE8fPX23PwfhnykfqnC2xRxOnVw5XuGIaA==}
     engines: {node: '>=6'}
-    hasBin: true
-
-  marked@18.0.9:
-    resolution: {integrity: sha512-/Sa4qiiHZxf0/FQdBBowr9q4r10krCwMvpK48FUBdXdUXScDxiQGR9zCPrFgRVR5LU3iySOiIjy09ZQvADir1w==}
-    engines: {node: '>= 20'}
     hasBin: true
 
   obug@2.1.4:
@@ -550,8 +542,6 @@ snapshots:
   import-without-cache@0.4.0: {}
 
   jsesc@3.1.0: {}
-
-  marked@18.0.9: {}
 
   obug@2.1.4: {}
 

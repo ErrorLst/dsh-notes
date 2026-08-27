@@ -1,7 +1,7 @@
 {
   "name": "@dsh-external/dsh-notes",
-  "description": "侧栏与对话区之间的全高竖栏：上半常驻会话卡片（直接对话/预设/模型），下半小计（全局+工作区 todo/随记，DSH 主题令牌适配）",
-  "version": "0.4.31",
+  "description": "侧栏与对话区之间的全高竖栏「小计」：全局+工作区 todo/随记，DSH 主题令牌适配；仅对话视图显示、窄窗口自动折叠",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "main": "lib/index.mjs",
@@ -40,8 +40,7 @@
     "@deepseek-ai/cordis": "^4.0.1"
   },
   "devDependencies": {
-    "tsdown": "0.22.2",
-    "marked": "^18.0.9"
+    "tsdown": "0.22.2"
   },
   "license": "MIT"
 }

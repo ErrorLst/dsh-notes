@@ -22,7 +22,6 @@ export default [
       // 必须 alwaysBundle 强制内联——否则 tsdown 默认外部化，浏览器端模块表
       // 没有 marked 工厂，运行时 require("marked") 会直接失败
       neverBundle: [/@deepseek-ai\/dsh-client-/, 'react', 'react-dom'],
-      alwaysBundle: ['marked'],
     },
     outputOptions: {
       entryFileNames: 'client.js',
