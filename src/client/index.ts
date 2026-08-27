@@ -674,7 +674,14 @@ function NotesDock(props) {
               let full = 0
               let countFull = 0
               for (const row of rows) {
-                const w = row.getBoundingClientRect().width
+                // 关键：行自身也设 max-content —— flex 列子元素默认被父级拉伸，
+                // 长待办会把竖栏 max-content 撑宽并连带拉伸行矩形，导致测量
+                // 拿到竖栏整体宽度（minW 爆炸 → 整栏被隐藏）。
+                const prevRowW = row.style.width
+                row.style.width = 'max-content'
+                let w = 0
+                try { w = row.getBoundingClientRect().width } catch { w = 0 }
+                row.style.width = prevRowW
                 if (w > full) {
                   full = w
                   try {
@@ -1194,7 +1201,7 @@ function NotesDock(props) {
     'div',
     {
       className: 'dsh-notes-dock' + (viewIsChat ? '' : ' view-hidden') + (covered ? ' covered-hidden' : ''),
-      'data-notes-ver': '16a3d1',
+      'data-notes-ver': '17b4e2',
       ref: (node) => {
         rootRef.current = node
         dockRef.current = node
