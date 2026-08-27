@@ -10,7 +10,7 @@
 //   2. 经 ctx.webServer 挂 HTTP API（同 dsh-deepseek-quota 通道）：
 //        GET  /api/dsh-notes?workspaceId=…   -> 小计状态快照
 //        POST /api/dsh-notes                 -> { action, … }
-//      小计动作：add / toggle / edit / delete / clear-done / set-memo
+//      小计动作：add / toggle / edit / delete / set-memo
 //               / pin（置顶）/ reorder（拖拽排序）/ undo-delete（撤销上次删除）
 //   v0.5.0 起移除「常驻会话」（scard-* 动作与客户端会话卡片），仅保留小计。
 //   3. 所有小计变更走插件内 promise 串行链（读-改-写），返回值只含标量拷贝。
@@ -224,22 +224,6 @@ export function apply(ctx, config = {}) {
           const indices = []
           const todos = current.todos.filter((item, index) => {
             if (item.id === body.id) {
-              removed.push(item)
-              indices.push(index)
-              return false
-            }
-            return true
-          })
-          if (removed.length > 0) recordUndo(undoKey, { removed, indices })
-          return { ...current, todos }
-        })
-      }
-      case 'clear-done': {
-        return mutate(scope, workspaceId, (current) => {
-          const removed = []
-          const indices = []
-          const todos = current.todos.filter((item, index) => {
-            if (item.done) {
               removed.push(item)
               indices.push(index)
               return false

@@ -17,10 +17,12 @@ const React = require('react')
 const { useState, useEffect, useLayoutEffect, useRef, useCallback } = React
 
 const STYLE_TAG_ID = 'dsh-notes-dock-style'
-const WIDTH_KEY = 'dsh-notes.width'
+/* 自适应宽度（v0.5.2 起取消手动拖拽与宽度上限）：
+   - 实际宽度 = 可用留白 - WIDTH_GAP（右侧与主会话区保持固定间距；无上限）
+   - 最小宽度动态计算（头部行单行所需宽度），放不下才隐藏（迟滞防抖）
+   - WIDTH_DEFAULT 仅用于 hero/空会话（无消息列可测）时的默认宽度 */
 const WIDTH_DEFAULT = 280
-const WIDTH_MIN = 220
-const WIDTH_MAX = 480
+const WIDTH_GAP = 16
 const MEMO_DEBOUNCE_MS = 600
 const UNDO_TTL_MS = 5000
 const ICON_CHECK =
@@ -33,10 +35,6 @@ const ICON_GRIP =
   '<svg viewBox="0 0 10 16" fill="currentColor"><circle cx="2.5" cy="2.5" r="1.4"/><circle cx="7.5" cy="2.5" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13.5" r="1.4"/><circle cx="7.5" cy="13.5" r="1.4"/></svg>'
 const ICON_DETAIL =
   '<svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 1.8h9v10.4h-9z"/><path d="M5 4.6h4M5 7h4M5 9.4h2.5"/></svg>'
-const ICON_COLLAPSE =
-  '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4.5L6 8.5l4-4"/></svg>'
-const ICON_EXPAND =
-  '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7.5L6 3.5l4 4"/></svg>'
 
 const DOCK_CSS = `
 .dsh-notes-dock {
@@ -59,34 +57,10 @@ const DOCK_CSS = `
 body[data-ds-dark-theme] .dsh-notes-dock {
   --dsh-notes-shadow: 0 8px 28px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
 }
-/* 窄窗口（<1024px，与 DSH 侧栏自动收起同阈值）：自动折叠成底部小胶囊 */
-.dsh-notes-dock.collapsed {
-  width: auto;
-  height: auto;
-  top: auto;
-  bottom: 0;
-  background: transparent;
-  border-right: none;
-}
-.dsh-notes-dock.collapsed .dock-body { display: none; }
-.dock-collapsed {
-  display: none;
-  align-items: center;
-  gap: 6px;
-  margin: 0 8px 8px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: var(--dsw-alias-bg-overlay);
-  border: 1px solid var(--dsw-alias-border-l2);
-  box-shadow: var(--dsh-notes-shadow);
-  font-size: 11.5px;
-  color: var(--dsw-alias-label-secondary);
-  white-space: nowrap;
-  transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
-}
-.dsh-notes-dock.collapsed .dock-collapsed { display: flex; }
-.dock-collapsed:hover { background: var(--dsw-alias-interactive-bg-hover-solid); color: var(--dsw-alias-label-primary); }
-.dock-collapsed svg { width: 11px; height: 11px; }
+/* 尺寸自适：与对话滚动体发生实际重叠时隐藏；尺寸恢复后自动显示（非硬编码阈值）。
+   用 visibility 而非 display:none——隐藏时空盒仍保留真实矩形，重叠测量不会因
+   自身隐藏而变成 0 造成“隐藏→显示→隐藏”的闪烁反馈回路。 */
+.dsh-notes-dock.covered-hidden { visibility: hidden; pointer-events: none; }
 /* 非对话视图（如轨迹）激活时隐藏整条竖栏，避免遮挡页面内容 */
 .dsh-notes-dock.view-hidden { display: none; }
 /* 复位规则用 :where() 保证零特异性，绝不覆盖任何组件类样式 */
@@ -97,37 +71,15 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 
 .dock-body { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 
-/* ===== 分区标题（小计） ===== */
-.np-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  min-height: 40px;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
-}
-.np-head .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dsw-alias-state-business-primary); flex: none; }
-.np-head .t { font-size: 12.5px; font-weight: 600; line-height: 20px; white-space: nowrap; }
-.np-head .spacer { flex: 1; }
-.np-hbtn {
-  flex: none;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  color: var(--dsw-alias-label-tertiary);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), color var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
-}
-.np-hbtn:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
-.np-hbtn svg { width: 13px; height: 13px; }
-
 /* ===== 小计 ===== */
 .np-section { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
-.np-tabs { display: flex; gap: 2px; flex: none; padding: 6px 12px 0; }
+/* 顶部工作区标签：独立分割区（底色 + 分隔线强调） */
+.np-tabs {
+  display: flex; gap: 2px; align-items: center; flex: none;
+  padding: 8px 12px;
+  background: var(--dsw-alias-bg-layer-2);
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
 .np-tab {
   padding: 3px 10px;
   border-radius: 999px;
@@ -157,26 +109,29 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   min-height: 0;
   flex: 1 1 55%;
 }
-.np-sec-head { display: flex; align-items: center; gap: 8px; flex: none; padding: 6px 12px 4px; }
+.np-sec-head { display: flex; align-items: baseline; gap: 8px; flex: none; padding: 8px 12px 4px; }
+/* 头部行：单行不断行；计数可压缩（超窄省略号），标题/清空按钮恒定不压缩 */
+.np-sec-head > * { white-space: nowrap; }
+.np-sec-title { flex-shrink: 0; }
+.np-clear { flex-shrink: 0; }
+.np-sec-count { flex-shrink: 1; min-width: 40px; overflow: hidden; text-overflow: ellipsis; }
 .np-sec-title { font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; color: var(--dsw-alias-label-tertiary); }
 .np-sec-count { font-size: 10.5px; color: var(--dsw-alias-label-tertiary); }
-.np-clear {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--dsw-alias-label-secondary);
-  padding: 2px 6px;
-  border-radius: 6px;
-  transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
+/* 待办内容卡片：与随记卡片同款（边框/圆角/间距），内部输入与列表无边框 */
+.np-todo-card {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+  margin: 0 12px 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--dsw-alias-bg-layer-1);
 }
-.np-clear:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover-danger); color: var(--dsw-alias-state-error-primary); }
-.np-clear:disabled { opacity: 0.4; cursor: default; }
-
-.np-input-row { display: flex; gap: 6px; flex: none; padding: 0 12px 6px; }
+.np-input-row { display: flex; gap: 6px; flex: none; padding: 8px; }
 .np-input {
   flex: 1;
   min-width: 0;
   padding: 5px 10px;
-  border-radius: 8px;
+  border-radius: 7px;
   border: 1px solid var(--dsw-alias-border-l2);
   background: var(--dsw-specific-input-major);
   color: var(--dsw-alias-label-primary);
@@ -189,7 +144,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 .np-add {
   flex: none;
   padding: 5px 12px;
-  border-radius: 8px;
+  border-radius: 7px;
   background: var(--dsw-alias-button-primary-fill);
   color: var(--dsw-alias-label-primary-foreground);
   font-size: 12px;
@@ -198,7 +153,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 }
 .np-add:hover { opacity: 0.88; }
 
-.np-list { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 8px 6px; }
+.np-list { flex: 1; min-height: 0; overflow-y: auto; padding: 0 8px 8px; }
 .np-item {
   display: flex;
   align-items: center;
@@ -421,14 +376,32 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   color: var(--dsw-alias-label-tertiary);
 }
 .np-detail-status { font-size: 10.5px; color: var(--dsw-alias-label-tertiary); }
-.np-empty { padding: 18px 12px; text-align: center; font-size: 11.5px; color: var(--dsw-alias-label-tertiary); }
+/* 待办空态：图标 + 引导文案 */
+.np-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; padding: 32px 16px; text-align: center;
+  color: var(--dsw-alias-label-tertiary);
+}
+.np-empty-icon {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--dsw-alias-interactive-bg-hover);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--dsw-alias-label-tertiary);
+}
+.np-empty-icon svg { width: 15px; height: 15px; }
+.np-empty p { margin: 0; font-size: 12px; color: var(--dsw-alias-label-secondary); }
+.np-empty .sub { font-size: 10.5px; color: var(--dsw-alias-label-tertiary); }
+
+/* 列表滚动条（与 DSH 视觉一致） */
+.np-list::-webkit-scrollbar { width: 8px; }
+.np-list::-webkit-scrollbar-thumb { background: var(--dsw-alias-scrollbar-bg-l1); border-radius: 4px; }
 
 .np-undo {
   display: flex;
   align-items: center;
   gap: 8px;
   flex: none;
-  margin: 0 12px 6px;
+  margin: 0 8px 8px;
   padding: 4px 10px;
   border-radius: 8px;
   background: var(--dsw-alias-bg-overlay);
@@ -490,19 +463,6 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 .np-memo::placeholder { color: var(--dsw-alias-label-tertiary); }
 .np-memo:focus { border-color: var(--dsw-alias-brand-primary); }
 
-/* ===== 右缘宽度拖拽（DSH 原生样式：不可见热区，仅指针变化） ===== */
-.dock-resizer {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  right: -4px;
-  width: 8px;
-  cursor: col-resize;
-  touch-action: none;
-  z-index: 6;
-}
-.dsh-notes-dock.resize-dragging { user-select: none; -webkit-user-select: none; cursor: col-resize; }
-.dsh-notes-dock.collapsed .dock-resizer { display: none; }
 `
 
 function scopeOf(data, tab) {
@@ -543,17 +503,17 @@ function NotesDock(props) {
   const [top, setTop] = useState(0)
   // 当前会话视图是否为「对话」（false 时隐藏整条竖栏，见定位 effect 的 detectChatView）
   const [viewIsChat, setViewIsChat] = useState(true)
-  // 窄窗口自动折叠：窗口宽度 < 1024（与 DSH 侧栏自动收起同阈值）时收起为底部小胶囊；
-  // 点击胶囊可临时展开（userExpanded），回到宽窗口后恢复始终展开
-  const [narrow, setNarrow] = useState(false)
-  const [userExpanded, setUserExpanded] = useState(false)
-  const [width, setWidth] = useState(() => {
-    try {
-      const value = Number(localStorage.getItem(WIDTH_KEY))
-      if (Number.isFinite(value)) return Math.min(WIDTH_MAX, Math.max(WIDTH_MIN, Math.round(value)))
-    } catch { /* ignore */ }
-    return WIDTH_DEFAULT
-  })
+  // 尺寸自适（非硬编码阈值）：竖栏宽度自动收缩以适配消息列左侧可用留白；
+  // 收缩至最小宽度仍放不下时才隐藏。covered = 隐藏；effWidth = 实际渲染宽度。
+  const [covered, setCovered] = useState(false)
+  const [effWidth, setEffWidth] = useState(WIDTH_DEFAULT)
+  // 供挂载 effect 闭包内测量读取（防陈旧值）；渲染时同步
+  const leftRef = useRef(260)
+  leftRef.current = left
+  const effWidthRef = useRef(effWidth)
+  effWidthRef.current = effWidth
+  const coveredRef = useRef(false)
+  coveredRef.current = covered
   const [data, setData] = useState({ global: { todos: [], memo: '' }, workspace: null })
   const [error, setError] = useState(null)
   // 小计默认落在当前工作区（而非全局）；无工作区时仅全局可用
@@ -587,12 +547,6 @@ function NotesDock(props) {
   const [undoInfo, setUndoInfo] = useState(null) // { scope, count } | null
   const [dragId, setDragId] = useState(null)
   const [dropId, setDropId] = useState(null)
-  const widthDragRef = useRef(null)
-
-  /* 回到宽窗口：取消临时展开，竖栏恢复始终展开（无折叠按钮） */
-  useEffect(() => {
-    if (!narrow) setUserExpanded(false)
-  }, [narrow])
 
   /* ---------- 自定义悬浮提示 ---------- */
   function tipElOf(target) {
@@ -683,9 +637,77 @@ function NotesDock(props) {
       const baseRect = base.getBoundingClientRect()
       setTop(Math.max(0, baseRect.top - frameRect.top))
     }
-    const updateNarrow = () => {
-      const next = frame.getBoundingClientRect().width < 1024
-      setNarrow((prev) => (prev === next ? prev : next))
+    // 尺寸自适（非硬编码阈值）：竖栏「应占矩形」与对话滚动体矩形的水平重叠 > 16px
+    // 即视为遮挡 → 隐藏；重叠消失（尺寸恢复/拖动后）自动显示。无滚动体（hero/无会话）不隐藏。
+    // 关键：用已知几何（left/width 状态 + 帧左偏移）而非自身 getBoundingClientRect——
+    // 隐藏态下自身矩形全 0，会与 visibility 双保险形成“隐藏→显示”反馈回路导致闪烁。
+    const updateCovered = () => {
+      let scroll = null
+      try {
+        scroll = center !== null ? center.querySelector('[data-conversation-scroll]') : null
+      } catch { /* ignore */ }
+      let next = false
+      let content = null
+      let minW = WIDTH_DEFAULT
+      if (scroll !== null) {
+        const frameLeft = frame.getBoundingClientRect().left
+        const aLeft = frameLeft + leftRef.current
+        // 消息列左缘（官方稳定锚点 [data-chat-flow] 第一项）；无消息（hero/空会话）
+        // 视为无内容可遮挡，不隐藏。gap = 消息列左缘 - 竖栏左缘 = 可用留白。
+        try {
+          const hit = center !== null ? center.querySelector('[data-chat-flow]') : null
+          content = hit !== null ? hit.getBoundingClientRect() : null
+        } catch { content = null }
+        if (content !== null) {
+          const gap = content.left - aLeft
+          const fit = Math.max(0, gap - WIDTH_GAP)
+          // 最小宽度动态、确定性测量：把竖栏临时设为 max-content，读头部行全宽
+          // （计数按完整文本），再减去计数全宽、置换为计数下限 40px + 内边距 16px。
+          // 结果 = 标题+按钮+计数下限，不随当前渲染宽度自引用；超窄时计数
+          // 显示省略号（CSS），行文不折行。
+          const el0 = rootRef.current
+          if (el0 !== null) {
+            const prevWidth = el0.style.width
+            try {
+              el0.style.width = 'max-content'
+              const rows = el0.querySelectorAll('.np-sec-head')
+              let full = 0
+              let countFull = 0
+              for (const row of rows) {
+                const w = row.getBoundingClientRect().width
+                if (w > full) {
+                  full = w
+                  try {
+                    const c = row.querySelector('.np-sec-count')
+                    countFull = c !== null ? c.getBoundingClientRect().width : 0
+                  } catch { countFull = 0 }
+                }
+              }
+              if (full > 0) minW = Math.max(120, full - countFull + 40 + 16)
+            } catch { /* 测量失败回退默认 */ } finally {
+              el0.style.width = prevWidth
+            }
+          }
+          // 迟滞带（HYST=24）：显示→隐藏 需 fit < minW；隐藏→显示 需 fit ≥ minW+HYST。
+          const HYST = 24
+          if (coveredRef.current) {
+            if (fit >= minW + HYST) next = false
+            else next = true
+          } else {
+            if (fit < minW) {
+              next = true
+            } else {
+              setEffWidth((prev) => (Math.abs(prev - fit) < 1 ? prev : fit))
+              next = false
+            }
+          }
+        } else {
+          // 无消息节点：显示（hero/空会话），宽度按偏好
+          setEffWidth((prev) => (prev === WIDTH_DEFAULT ? prev : WIDTH_DEFAULT))
+          next = false
+        }
+      }
+      setCovered((prev) => (prev === next ? prev : next))
     }
     // 当前视图是否为「对话」：竖栏只在对话视图显示，切换轨迹等其他视图时隐藏，
     // 避免遮挡页面内容。判定链（对话 tab 恒为 conversation.view 首个条目 order 0）：
@@ -707,7 +729,7 @@ function NotesDock(props) {
     }
     updateLeft()
     updateTop()
-    updateNarrow()
+    updateCovered()
     setViewIsChat(detectChatView())
     let raf = 0
     const scheduleUpdate = () => {
@@ -717,7 +739,7 @@ function NotesDock(props) {
         scrollEl = findScrollBody()
         updateLeft()
         updateTop()
-        updateNarrow()
+        updateCovered()
         setViewIsChat(detectChatView())
       })
     }
@@ -917,14 +939,6 @@ function NotesDock(props) {
     })
   }
 
-  function clearDone() {
-    const scope = scopeOf(data, tab)
-    const count = scope === null ? 0 : scope.todos.filter((item) => item.done).length
-    void post({ action: 'clear-done', scope: tab, workspaceId: workspaceArg }).then((result) => {
-      if (result.ok === true && count > 0) showUndo(tab, count)
-    })
-  }
-
   /* ---------- 拖拽排序（Pointer Events 手动拖拽） ---------- */
   function onGripPointerDown(event, id) {
     if (event.pointerType === 'mouse' && event.button !== 0) return
@@ -1070,53 +1084,8 @@ function NotesDock(props) {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
   }
 
-  /* ---------- 右边缘水平拖拽（调整竖栏宽度） ---------- */
-  function onWidthPointerDown(event) {
-    if (event.pointerType === 'mouse' && event.button !== 0) return
-    event.preventDefault()
-    widthDragRef.current = event.pointerId
-    if (dockRef.current !== null) dockRef.current.classList.add('resize-dragging')
-    try { event.currentTarget.setPointerCapture(event.pointerId) } catch { /* ignore */ }
-  }
-  function onWidthPointerMove(event) {
-    if (widthDragRef.current === null) return
-    const next = Math.round(Math.min(WIDTH_MAX, Math.max(WIDTH_MIN, event.clientX - left)))
-    setWidth(next)
-    try { localStorage.setItem(WIDTH_KEY, String(next)) } catch { /* ignore */ }
-  }
-  function onWidthPointerUp() {
-    widthDragRef.current = null
-    if (dockRef.current !== null) dockRef.current.classList.remove('resize-dragging')
-  }
-
   /* ---------- 渲染 ---------- */
-  const dockStyle = { left: `${left}px`, top: `${top}px`, width: `${width}px` }
-  // 窄窗口自动折叠（无手动折叠/持久化；点击胶囊临时展开，回宽窗口恢复）
-  const autoCollapsed = narrow && !userExpanded
-
-  if (autoCollapsed) {
-    return React.createElement(
-      'div',
-      {
-        className: 'dsh-notes-dock collapsed' + (viewIsChat ? '' : ' view-hidden'),
-        'data-notes-ver': '09d6e3',
-        ref: rootRef,
-        style: { left: `${left}px`, top: 'auto' },
-        onMouseOver: onTipOver,
-        onMouseMove: onTipMove,
-        onMouseOut: onTipOut,
-        onPointerDown: onDockPointerDown,
-      },
-      React.createElement(
-        'button',
-        { key: 'pill', className: 'dock-collapsed', type: 'button', 'data-tip': '展开小计', onClick: () => setUserExpanded(true) },
-        React.createElement('span', null, '📝'),
-        React.createElement('span', null, '小计'),
-        React.createElement('span', { dangerouslySetInnerHTML: { __html: ICON_EXPAND } }),
-      ),
-      React.createElement('div', { key: 'tip', className: 'np-tip', ref: tipRef, hidden: true }),
-    )
-  }
+  const dockStyle = { left: `${left}px`, top: `${top}px`, width: `${effWidth}px` }
 
   const scope = tab === 'workspace' && data.workspace === null ? null : scopeOf(data, tab)
   const todos = scope === null ? [] : scope.todos
@@ -1153,7 +1122,13 @@ function NotesDock(props) {
 
   /* ---- 待办列表 ---- */
   const listItems = displayTodos.length === 0
-    ? [React.createElement('div', { key: 'empty', className: 'np-empty' }, '还没有待办')]
+    ? [React.createElement('div', { key: 'empty', className: 'np-empty' },
+        React.createElement('div', { className: 'np-empty-icon' },
+          React.createElement('span', { dangerouslySetInnerHTML: { __html: ICON_CHECK } }),
+        ),
+        React.createElement('p', null, '还没有待办'),
+        React.createElement('p', { className: 'sub' }, '在上方输入内容，回车即可添加'),
+      )]
     : displayTodos.map((item) => {
         const rowClass = 'np-item'
           + (item.done ? ' done' : '')
@@ -1218,8 +1193,8 @@ function NotesDock(props) {
   return React.createElement(
     'div',
     {
-      className: 'dsh-notes-dock' + (viewIsChat ? '' : ' view-hidden'),
-      'data-notes-ver': '09d6e3',
+      className: 'dsh-notes-dock' + (viewIsChat ? '' : ' view-hidden') + (covered ? ' covered-hidden' : ''),
+      'data-notes-ver': '16a3d1',
       ref: (node) => {
         rootRef.current = node
         dockRef.current = node
@@ -1237,22 +1212,6 @@ function NotesDock(props) {
       React.createElement(
         'section',
         { className: 'np-section' },
-        React.createElement(
-          'div',
-          { className: 'np-head' },
-          React.createElement('span', { className: 'dot' }),
-          React.createElement('span', { className: 't' }, '小计'),
-          React.createElement('span', { className: 'spacer' }),
-          narrow && userExpanded
-            ? React.createElement('button', {
-                type: 'button',
-                className: 'np-hbtn',
-                'data-tip': '收起小计（回到胶囊）',
-                onClick: () => setUserExpanded(false),
-                dangerouslySetInnerHTML: { __html: ICON_COLLAPSE },
-              })
-            : null,
-        ),
         React.createElement('div', { className: 'np-tabs' }, ...tabs),
         error === null
           ? null
@@ -1269,33 +1228,32 @@ function NotesDock(props) {
               { className: 'np-sec-count' },
               `共 ${todos.length} 项 · 未完成 ${todos.length - doneCount}`,
             ),
-            React.createElement(
-              'button',
-              { type: 'button', className: 'np-clear', 'data-tip': '清空已完成', disabled: doneCount === 0, onClick: clearDone },
-              '清空已完成',
-            ),
           ),
           React.createElement(
             'div',
-            { className: 'np-input-row' },
-            React.createElement('input', {
-              ref: inputRef,
-              className: 'np-input',
-              placeholder: '添加待办，回车确认…',
-              maxLength: 500,
-              onKeyDown: (event) => { if (event.key === 'Enter') addTodo() },
-            }),
-            React.createElement('button', { type: 'button', className: 'np-add', onClick: addTodo }, '添加'),
+            { className: 'np-todo-card' },
+            React.createElement(
+              'div',
+              { className: 'np-input-row' },
+              React.createElement('input', {
+                ref: inputRef,
+                className: 'np-input',
+                placeholder: '添加待办，回车确认…',
+                maxLength: 500,
+                onKeyDown: (event) => { if (event.key === 'Enter') addTodo() },
+              }),
+              React.createElement('button', { type: 'button', className: 'np-add', onClick: addTodo }, '添加'),
+            ),
+            React.createElement('div', { className: 'np-list' }, ...listItems),
+            undoInfo === null
+              ? null
+              : React.createElement(
+                  'div',
+                  { className: 'np-undo' },
+                  React.createElement('span', null, `已删除 ${undoInfo.count} 项`),
+                  React.createElement('button', { type: 'button', onClick: undoDelete }, '撤销'),
+                ),
           ),
-          React.createElement('div', { className: 'np-list' }, ...listItems),
-          undoInfo === null
-            ? null
-            : React.createElement(
-                'div',
-                { className: 'np-undo' },
-                React.createElement('span', null, `已删除 ${undoInfo.count} 项`),
-                React.createElement('button', { type: 'button', onClick: undoDelete }, '撤销'),
-              ),
         ),
         React.createElement(
           'div',
@@ -1384,15 +1342,6 @@ function NotesDock(props) {
             ),
       ),
     ),
-    React.createElement('div', {
-      key: 'resizer',
-      className: 'dock-resizer',
-      'data-tip': '拖动调整竖栏宽度',
-      onPointerDown: onWidthPointerDown,
-      onPointerMove: onWidthPointerMove,
-      onPointerUp: onWidthPointerUp,
-      onPointerCancel: onWidthPointerUp,
-    }),
     React.createElement('div', { key: 'tip', className: 'np-tip', ref: tipRef, hidden: true }),
   )
 }

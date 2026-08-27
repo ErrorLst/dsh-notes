@@ -1,7 +1,7 @@
 {
   "name": "@dsh-external/dsh-notes",
   "description": "侧栏与对话区之间的全高竖栏「小计」：全局+工作区 todo/随记，DSH 主题令牌适配；仅对话视图显示、窄窗口自动折叠",
-  "version": "0.5.0",
+  "version": "0.5.3",
   "private": true,
   "type": "module",
   "main": "lib/index.mjs",
