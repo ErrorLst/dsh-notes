@@ -337,6 +337,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   padding: 10px;
   overflow-y: auto;
   min-height: 0;
+  overflow-anchor: none; /* 关闭滚动锚定：重渲染/内容变化不触发滚动位置漂移 */
 }
 .np-detail-field { display: flex; flex-direction: column; gap: 3px; }
 .np-detail-field label { font-size: 11px; color: var(--dsw-alias-label-tertiary); }
@@ -356,6 +357,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 .np-detail-textarea {
   min-height: 110px;
   resize: vertical;
+  overflow-anchor: none;
   padding: 6px 8px;
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 7px;
@@ -536,6 +538,10 @@ function NotesDock(props) {
   const detailDraftRef = useRef(null)
   const detailDirtyRef = useRef(false)
   const detailTimerRef = useRef(null)
+  const detailBodyRef = useRef(null)
+  const detailTaRef = useRef(null)
+  const detailScrollRef = useRef({ body: 0, ta: 0 })
+  const lastDetailValueRef = useRef(null)
   const [memoText, setMemoText] = useState('')
   const [memoStatus, setMemoStatus] = useState('')
   const memoTextRef = useRef('')
@@ -1046,6 +1052,8 @@ function NotesDock(props) {
     detailDraftRef.current = draft
     detailDirtyRef.current = false
     setDetailStatus('')
+    detailScrollRef.current = { body: 0, ta: 0 }
+    lastDetailValueRef.current = null
     setDetailDraft(draft)
   }
   function flushDetailSave() {
@@ -1072,6 +1080,8 @@ function NotesDock(props) {
     flushDetailSave()
     detailDraftRef.current = null
     setDetailStatus('')
+    detailScrollRef.current = { body: 0, ta: 0 }
+    lastDetailValueRef.current = null
     setDetailDraft(null)
   }
   function onDetailInput(event) {
@@ -1088,6 +1098,32 @@ function NotesDock(props) {
     setDetailDraft({ ...draft })
     scheduleDetailSave()
   }
+
+  /* ---------- 详情卡片滚动位置保持 ----------
+     卡片外的任何重渲染（自动保存回包、window focus 重新拉取、外壳状态更新等）都可能让
+     Chromium 重置 / 漂移描述的滚动位置（回滚一段或直接回顶）；这里在每次提交后把
+     用户最新的 scrollTop 恢复回去。仅在描述文本真的变化（打字，光标跟随）时不干预。 */
+  function onDetailBodyScroll(event) {
+    detailScrollRef.current.body = event.currentTarget.scrollTop
+  }
+  function onDetailTaScroll(event) {
+    detailScrollRef.current.ta = event.currentTarget.scrollTop
+  }
+  useLayoutEffect(() => {
+    const draft = detailDraft
+    if (draft === null) return
+    const ta = detailTaRef.current
+    const body = detailBodyRef.current
+    if (lastDetailValueRef.current !== draft.detail) {
+      // 描述文本变化（正在输入）：浏览器按光标定位，只重新采集基线，不恢复
+      lastDetailValueRef.current = draft.detail
+      if (ta !== null) detailScrollRef.current.ta = ta.scrollTop
+      if (body !== null) detailScrollRef.current.body = body.scrollTop
+      return
+    }
+    if (ta !== null && ta.scrollTop !== detailScrollRef.current.ta) ta.scrollTop = detailScrollRef.current.ta
+    if (body !== null && body.scrollTop !== detailScrollRef.current.body) body.scrollTop = detailScrollRef.current.body
+  })
 
   function formatTime(ms) {
     if (typeof ms !== 'number' || !Number.isFinite(ms)) return '—'
@@ -1206,7 +1242,7 @@ function NotesDock(props) {
     'div',
     {
       className: 'dsh-notes-dock' + (viewIsChat ? '' : ' view-hidden') + (covered ? ' covered-hidden' : ''),
-      'data-notes-ver': '18c5f3',
+      'data-notes-ver': '9efe09',
       ref: (node) => {
         rootRef.current = node
         dockRef.current = node
@@ -1308,7 +1344,7 @@ function NotesDock(props) {
                 ),
                 React.createElement(
                   'div',
-                  { className: 'np-detail-body' },
+                  { className: 'np-detail-body', ref: detailBodyRef, onScroll: onDetailBodyScroll },
                   React.createElement(
                     'div',
                     { className: 'np-detail-field' },
@@ -1331,8 +1367,10 @@ function NotesDock(props) {
                       placeholder: '描述 / 备注（可多行）…',
                       maxLength: 20000,
                       spellCheck: false,
+                      ref: detailTaRef,
                       value: detailDraft.detail,
                       onChange: onDetailTextarea,
+                      onScroll: onDetailTaScroll,
                       onKeyDown: (event) => { if (event.key === 'Escape') closeDetail() },
                     }),
                   ),
