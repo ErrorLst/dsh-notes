@@ -518,6 +518,7 @@ function NotesDock(props) {
   const leftRef = useRef(260)
   leftRef.current = left
   const effWidthRef = useRef(effWidth)
+  const minWRef = useRef(0) // 最近一次测量出的「最小可用宽度」（卡片打开期间跳过测量，沿用缓存）
   effWidthRef.current = effWidth
   const coveredRef = useRef(false)
   coveredRef.current = covered
@@ -660,6 +661,9 @@ function NotesDock(props) {
       let next = false
       let content = null
       let minW = WIDTH_DEFAULT
+      // 详情卡片打开期间：竖栏（含卡片）若被瞬时置为 max-content 测量，描述区会重新排版、
+      // 滚动高度骤变 → 无输入也会把滚动条顶回（1.5s 轮询 + 各类 DOM 变化都会触发）。此时跳过测量并冻结宽度。
+      const cardOpen = detailDraftRef.current !== null
       if (scroll !== null) {
         const frameLeft = frame.getBoundingClientRect().left
         const aLeft = frameLeft + leftRef.current
@@ -677,7 +681,7 @@ function NotesDock(props) {
           // 结果 = 标题+按钮+计数下限，不随当前渲染宽度自引用；超窄时计数
           // 显示省略号（CSS），行文不折行。
           const el0 = rootRef.current
-          if (el0 !== null) {
+          if (el0 !== null && !cardOpen) {
             const prevWidth = el0.style.width
             try {
               el0.style.width = 'max-content'
@@ -701,11 +705,12 @@ function NotesDock(props) {
                   } catch { countFull = 0 }
                 }
               }
-              if (full > 0) minW = Math.max(120, full - countFull + 40 + 16)
+              if (full > 0) minWRef.current = Math.max(120, full - countFull + 40 + 16)
             } catch { /* 测量失败回退默认 */ } finally {
               el0.style.width = prevWidth
             }
           }
+          if (minWRef.current > 0) minW = minWRef.current
           // 迟滞带（HYST=24）：显示→隐藏 需 fit < minW；隐藏→显示 需 fit ≥ minW+HYST。
           const HYST = 24
           if (coveredRef.current) {
@@ -715,13 +720,13 @@ function NotesDock(props) {
             if (fit < minW) {
               next = true
             } else {
-              setEffWidth((prev) => (Math.abs(prev - fit) < 1 ? prev : fit))
+              if (!cardOpen) setEffWidth((prev) => (Math.abs(prev - fit) < 1 ? prev : fit))
               next = false
             }
           }
         } else {
-          // 无消息节点：显示（hero/空会话），宽度按偏好
-          setEffWidth((prev) => (prev === WIDTH_DEFAULT ? prev : WIDTH_DEFAULT))
+          // 无消息节点：显示（hero/空会话），宽度按偏好（卡片打开时同样冻结）
+          if (!cardOpen) setEffWidth((prev) => (prev === WIDTH_DEFAULT ? prev : WIDTH_DEFAULT))
           next = false
         }
       }
@@ -1242,7 +1247,7 @@ function NotesDock(props) {
     'div',
     {
       className: 'dsh-notes-dock' + (viewIsChat ? '' : ' view-hidden') + (covered ? ' covered-hidden' : ''),
-      'data-notes-ver': '9efe09',
+      'data-notes-ver': '312d80',
       ref: (node) => {
         rootRef.current = node
         dockRef.current = node
