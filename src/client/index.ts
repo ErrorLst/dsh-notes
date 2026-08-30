@@ -498,15 +498,18 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 /* ===== 讯息页（合并自 dsh-livefeed）：面板撑满 dock，去掉绝对定位 ===== */
 .dock-feed { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
 .dock-feed .lf-panel {
-  position: static; width: 100%; max-width: none; height: 100%;
+  position: static; width: 100%; max-width: none;
+  flex: 1; min-height: 0; height: auto;   /* 百分比高度在 flex 链中不如 flex 可靠，改用 flex 收缩 */
+  overflow: hidden;                        /* 防内容溢出 dock 边界 */
   z-index: 0; border-left: none;
 }
+.dock-feed .lf-scroll { scrollbar-gutter: stable; }
 .dock-feed .lf-card { background: var(--dsw-alias-bg-layer-2); }
 .dock-feed .lf-card:hover { background: var(--dsw-alias-interactive-bg-hover-solid); }
 
 /* ===== 宽度拖拽手柄（右缘，竖直抓条） ===== */
 .dock-resize {
-  position: absolute; top: 0; bottom: 0; right: -6px; width: 12px;
+  position: absolute; top: 0; bottom: 0; right: -8px; width: 8px;
   z-index: 20; cursor: col-resize; touch-action: none;
 }
 .dock-resize::after {
