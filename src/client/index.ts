@@ -497,6 +497,12 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 
 /* ===== 讯息页（合并自 dsh-livefeed）：面板撑满 dock，去掉绝对定位 ===== */
 .dock-feed { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+/* FeedPanel 根节点是「无 class 的包裹 div」——它才是 .dock-feed 的 flex 单元格；
+   必须让包裹 div 承担 flex 收缩，否则 .lf-panel 内部的高度约束全部失效（讯息页不滚动）。 */
+.dock-feed > div {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+  min-width: 0; overflow: hidden;
+}
 .dock-feed .lf-panel {
   position: static; width: 100%; max-width: none;
   flex: 1; min-height: 0; height: auto;   /* 百分比高度在 flex 链中不如 flex 可靠，改用 flex 收缩 */
