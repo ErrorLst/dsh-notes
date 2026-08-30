@@ -417,6 +417,27 @@ export function applyLivefeedHost(ctx) {
         text: await page.evaluate(() => (document.body && document.body.innerText) || '').catch(() => ''),
         title: await page.title().catch(() => ''),
       });
+      // ── 网络层响应收集（document 级）──
+      // JSON 响应体直接从网络流读取：不受新版 JSON 查看器(Shadow DOM)、
+      // 页面 CSP 与 innerText 空白的任何影响，是「内容为空」问题的最可靠来源；
+      // 同时能拿到真实 HTTP 状态码（429/403/503 = 限流/拦截，区分于质询）。
+      const docResponses = [];
+      let hookedPage = null;
+      const onResp = (r) => {
+        try {
+          if (r.request().resourceType() !== 'document') return;
+          const entry = { status: r.status(), url: r.url(), body: '', done: false };
+          docResponses.push(entry);
+          if (docResponses.length > 40) docResponses.shift();
+          r.text().then((txt) => { entry.body = txt || ''; entry.done = true; }).catch(() => { entry.done = true; });
+        } catch (_) { /* ignore */ }
+      };
+      const ensureHook = (pageObj) => {
+        if (hookedPage === pageObj) return;
+        hookedPage = pageObj;
+        pageObj.on('response', onResp);
+      };
+      ensureHook(page);
       // 交互式 Turnstile 复选框（在 iframe 或主页内找 checkbox / 含 verify/human 的按钮）：
       // 能点则点一下；自动质询或没有可点元素时安全跳过。
       const trySolveTurnstile = async () => {
@@ -451,60 +472,77 @@ export function applyLivefeedHost(ctx) {
         return chalText(st.text) || chalText(st.title);
       };
       const sessionDead = (err) => /closed|crash|target|context|disconnect|protocol|ebmlastchance/i.test(String((err && err.message) || err));
+      const waitBody = async () => {
+        for (let i = 0; i < 25; i++) {
+          const last = docResponses[docResponses.length - 1];
+          if (last === undefined || last.done) return;
+          await page.waitForTimeout(200).catch(() => { /* ignore */ });
+        }
+      };
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          await page.goto(String(url), { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => { /* 慢加载也继续取内容 */ });
+          docResponses.length = 0;
+          let navErr = null;
+          await page.goto(String(url), { waitUntil: 'domcontentloaded', timeout: 45000 }).catch((e) => { navErr = e; });
           let st = await readState();
-          if (chalText(st.text) || chalText(st.title)) {
-            browserLog('CF 质询检测到，等待自动通过（最多 ~75s）…');
+          let lastDoc = docResponses[docResponses.length - 1] || null;
+          const rateLimited = lastDoc !== null && (lastDoc.status === 429 || lastDoc.status === 403 || lastDoc.status === 503);
+          if (chalText(st.text) || chalText(st.title) || rateLimited) {
+            browserLog('CF 质询/限流检测到（HTTP ' + (lastDoc ? lastDoc.status : '?') + '），等待自动通过（最多 ~75s）…');
             if (await waitChallenge()) {
-              // 质询不过 → 结束本轮，但保留档案（见顶部策略注释）
-              browserLog('CF 质询未通过（保留档案）: ' + String(url));
+              // 质询不过/限流 → 结束本轮，但保留档案（见顶部策略注释）
+              browserLog('CF 质询未通过（保留档案，限流需等待更久）: ' + String(url));
               break;
             }
             st = await readState();
+            await waitBody();
           }
-          // ── 内容读取（新内核兼容）──────────────────────────────────────────
-          // 旧方案直接读 document.body.innerText / <pre>：新版 Chromium（Edge 130+）
-          // 的 JSON 查看器把响应渲染进 Shadow DOM，innerText 为空；
-          // Cloudflare Turnstile 质询页同样走 Shadow DOM。改用「页面上下文 fetch」：
-          // 与页面同源、共享浏览器 cookie/UA/TLS 指纹，直取原始响应文本
-          // （JSON 或 429/质询 HTML）。仍保留 innerText/<pre> 兜底。
+          // ── 1) 网络层响应体（最可靠：JSON 查看器/CSP 无关）──
           let t = '';
-          try {
-            const js = await page.evaluate(async (u) => {
-              try {
-                const r = await fetch(u, { headers: { accept: 'application/json, text/plain, */*' } });
-                const txt = await r.text();
-                return { status: r.status, txt };
-              } catch (err) {
-                return { status: 0, txt: '', err: String((err && err.message) || err) };
-              }
-            }, String(url));
-            if (js && js.txt && js.txt.trim()) {
-              const lower = js.txt.slice(0, 2000).toLowerCase();
-              if (/<(!doctype|html|head|body)/i.test(lower)) {
-                // 质询 / 限流页：统一走质询判定
-                if (chalText(js.txt) || js.status === 429) {
-                  browserLog('in-page fetch 返回质询/限流页 status=' + js.status + '，等待自动通过…');
-                  if (await waitChallenge()) {
-                    browserLog('CF 质询未通过（保留档案）: ' + String(url));
-                    break;
-                  }
-                  st = await readState();
-                } else {
-                  t = js.txt.trim(); // 非质询 HTML（登录/跳转页等）原样返回
-                }
-              } else {
-                t = js.txt.trim(); // JSON / 纯文本
-              }
-            } else if (js && js.status) {
-              browserLog('in-page fetch 空响应 status=' + js.status + (js.err ? ' err=' + js.err : ''));
+          for (const e of [...docResponses].reverse()) {
+            if (!e.done || !e.body || !e.body.trim()) continue;
+            const body = e.body.trim();
+            const lower = body.slice(0, 2000).toLowerCase();
+            if (/<(!doctype|html|head|body)/i.test(lower)) {
+              if (chalText(body) || e.status === 429 || e.status === 403 || e.status === 503) continue; // 质询/限流页跳过
+              t = body; // 非质询 HTML（登录/跳转页等）原样返回
+            } else {
+              t = body; // JSON / 纯文本
             }
-          } catch (err) {
-            browserLog('in-page fetch 失败，回退 innerText: ' + String((err && err.message) || err));
+            break;
           }
-          // 兜底：旧内核 innerText / <pre> 提取
+          // ── 2) 页面上下文 fetch（同源 cookie/UA/TLS）──
+          if (!t) {
+            try {
+              const js = await page.evaluate(async (u) => {
+                try {
+                  const r = await fetch(u, { headers: { accept: 'application/json, text/plain, */*' } });
+                  const txt = await r.text();
+                  return { status: r.status, txt };
+                } catch (err) {
+                  return { status: 0, txt: '', err: String((err && err.message) || err) };
+                }
+              }, String(url));
+              if (js && js.txt && js.txt.trim()) {
+                const lower = js.txt.slice(0, 2000).toLowerCase();
+                if (/<(!doctype|html|head|body)/i.test(lower)) {
+                  if (chalText(js.txt) || js.status === 429 || js.status === 403 || js.status === 503) {
+                    browserLog('in-page fetch 返回质询/限流页 status=' + js.status);
+                    if (await waitChallenge()) break;
+                  } else {
+                    t = js.txt.trim(); // 非质询 HTML（登录/跳转页等）原样返回
+                  }
+                } else {
+                  t = js.txt.trim(); // JSON / 纯文本
+                }
+              } else if (js && js.status) {
+                browserLog('in-page fetch 空响应 status=' + js.status + (js.err ? ' err=' + js.err : ''));
+              }
+            } catch (err) {
+              browserLog('in-page fetch 失败，回退 innerText: ' + String((err && err.message) || err));
+            }
+          }
+          // ── 3) 兜底：旧内核 innerText / <pre> 提取 ──
           if (!t) {
             t = String(st.text || '').trim();
             if (t && t[0] !== '{' && t[0] !== '[') {
@@ -513,7 +551,16 @@ export function applyLivefeedHost(ctx) {
               if (m) t = m[1].trim();
             }
           }
-                    if (!t) throw new Error('浏览器抓取内容为空');
+          if (!t) {
+            const last2 = docResponses[docResponses.length - 1];
+            if (last2 && (last2.status === 429 || last2.status === 403 || last2.status === 503)) {
+              throw new Error('浏览器抓取被限流（HTTP ' + last2.status + '），建议等待 10~30 分钟或更换网络后再试');
+            }
+            if (docResponses.length === 0) {
+              throw new Error('浏览器无法建立连接（' + (navErr && navErr.message ? String(navErr.message).split('\n')[0] : '网络错误') + '）—— 请检查网络/VPN/代理后再试');
+            }
+            throw new Error('浏览器抓取内容为空');
+          }
           let truncated = false;
           if (t.length > 1200000) { t = t.slice(0, 1200000); truncated = true; }
           return { url: String(url), statusCode: 200, body: { kind: 'text', content: t }, truncated };
@@ -524,6 +571,7 @@ export function applyLivefeedHost(ctx) {
           if (dead) {
             await resetBrowserProfile();
             page = await getBrowserPage();
+            ensureHook(page);
           } else {
             await new Promise((r) => { try { ctx.timeout(r, 3000); } catch (_) { r(); } });
           }
