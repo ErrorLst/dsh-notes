@@ -464,13 +464,56 @@ export function applyLivefeedHost(ctx) {
             }
             st = await readState();
           }
-          let t = String(st.text || '').trim();
-          if (t && t[0] !== '{' && t[0] !== '[') {
-            const html = await page.content().catch(() => '');
-            const m = html.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
-            if (m) t = m[1].trim();
+          // ── 内容读取（新内核兼容）──────────────────────────────────────────
+          // 旧方案直接读 document.body.innerText / <pre>：新版 Chromium（Edge 130+）
+          // 的 JSON 查看器把响应渲染进 Shadow DOM，innerText 为空；
+          // Cloudflare Turnstile 质询页同样走 Shadow DOM。改用「页面上下文 fetch」：
+          // 与页面同源、共享浏览器 cookie/UA/TLS 指纹，直取原始响应文本
+          // （JSON 或 429/质询 HTML）。仍保留 innerText/<pre> 兜底。
+          let t = '';
+          try {
+            const js = await page.evaluate(async (u) => {
+              try {
+                const r = await fetch(u, { headers: { accept: 'application/json, text/plain, */*' } });
+                const txt = await r.text();
+                return { status: r.status, txt };
+              } catch (err) {
+                return { status: 0, txt: '', err: String((err && err.message) || err) };
+              }
+            }, String(url));
+            if (js && js.txt && js.txt.trim()) {
+              const lower = js.txt.slice(0, 2000).toLowerCase();
+              if (/<(!doctype|html|head|body)/i.test(lower)) {
+                // 质询 / 限流页：统一走质询判定
+                if (chalText(js.txt) || js.status === 429) {
+                  browserLog('in-page fetch 返回质询/限流页 status=' + js.status + '，等待自动通过…');
+                  if (await waitChallenge()) {
+                    browserLog('CF 质询未通过（保留档案）: ' + String(url));
+                    break;
+                  }
+                  st = await readState();
+                } else {
+                  t = js.txt.trim(); // 非质询 HTML（登录/跳转页等）原样返回
+                }
+              } else {
+                t = js.txt.trim(); // JSON / 纯文本
+              }
+            } else if (js && js.status) {
+              browserLog('in-page fetch 空响应 status=' + js.status + (js.err ? ' err=' + js.err : ''));
+            }
+          } catch (err) {
+            browserLog('in-page fetch 失败，回退 innerText: ' + String((err && err.message) || err));
           }
-          if (!t) throw new Error('浏览器抓取内容为空');
+          // 兜底：旧内核 innerText / <pre> 提取
+          if (!t) {
+            t = String(st.text || '').trim();
+            if (t && t[0] !== '{' && t[0] !== '[') {
+              const html = await page.content().catch(() => '');
+              const m = html.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
+              if (m) t = m[1].trim();
+            }
+          }
+                    if (!t) throw new Error('浏览器抓取内容为空');
           let truncated = false;
           if (t.length > 1200000) { t = t.slice(0, 1200000); truncated = true; }
           return { url: String(url), statusCode: 200, body: { kind: 'text', content: t }, truncated };
