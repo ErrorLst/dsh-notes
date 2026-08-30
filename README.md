@@ -1,8 +1,13 @@
-# dsh-notes · 小记（含常驻会话卡片）
+# dsh-notes · 小记 + 实时讯息（合并 dsh-livefeed）
 
-DSH（DeepSeek Harness）「小记」插件：常驻在侧栏与对话区之间的**全高竖栏**，上半部分为**常驻会话卡片**（卡片内直接对话，融合自 dsh-session-card），下半部分为持久化轻量笔记栏（**全局**与**工作区**两种作用域）。所有配色基于 DSH 主题令牌（`--dsw-alias-*`），自动适配明暗主题。
+DSH（DeepSeek Harness）「小记」插件：常驻在侧栏与对话区之间的**全高竖栏**，顶部页签切换两个页面：
 
-> 当前状态：**v0.4.25**——全高竖栏（上常驻会话卡片 / 下小计）已落地并构建；Host half 改动需重启 DSH 生效，客户端改动刷新即见。
+- **小计**：持久化轻量笔记栏（**全局**与**工作区**两种作用域，待办 + 随记）
+- **讯息**：Linux Do 实时讯息面板（原 dsh-livefeed 全部能力：定时拉取、AI 价值筛选、未读/已读/设置）
+
+所有配色基于 DSH 主题令牌（`--dsw-alias-*`），自动适配明暗主题。
+
+> 当前状态：**v0.6.0**——dsh-livefeed 已合并进本插件（Host 采集管线 + /api/dsh-livefeed + 客户端「讯息」页签 + 右缘宽度拖拽）；Host half 改动需重启 DSH 生效，客户端改动刷新即见。
 
 ## 特性
 
@@ -16,6 +21,13 @@ DSH（DeepSeek Harness）「小记」插件：常驻在侧栏与对话区之间�
 - 🔒 **Agent 隔离（小计内容）**：小计内容对模型完全不可见 —— 不注册任何模型工具、不进提示词、不写会话日志，数据仅存于独立存储域；常驻会话是独立聊天通道，与 notes.json 互不相通
 - 💾 持久化：小计落盘 `~/.dsh/storages/notes.json`（存储域 `notes`，JSON 后端）；常驻会话走 DSH 原生会话日志
 - 🎨 主题适配：仅使用 DSH 语义令牌（`--dsw-alias-*`），明暗自动切换
+
+## v0.6.0 · 合并 dsh-livefeed
+
+- 左侧全高竖栏顶部新增「小计 / 讯息」页签；「讯息」页在线保留原 livefeed 的面板（未读/已读、刷新/暂停/全部已读、面板设置）与轮询（5s）。
+- Host 采集管线原样并入（`src/livefeed-host.mjs`）：数据/配置目录不变（`~/.dsh/dsh-livefeed/`），HTTP API 仍为 `/api/dsh-livefeed`，已读/已采集去重历史不丢失。
+- 右缘宽度拖拽手柄：**200~640px**，localStorage 持久化（键 `dsh-notes.dockWidth`）；生效宽度 = min(拖拽宽, 与对话区可用留白)，不覆盖对话区；未拖拽过则沿用自动适配。
+- 插件组合：`@dsh-external/dsh-livefeed` 已从 profile 移除；该目录（`dsh-livefeed/`）保留原样（含构建脚本），需要时可随时重新启用。
 
 ## 快速开始
 
@@ -98,8 +110,11 @@ dsh web               # 重启 DSH 使其生效
 ```
 dsh-notes/
 ├── src/
-│   ├── index.mjs          # Host half：存储域 + HTTP API + 常驻会话管理（会话卡片）
-│   └── client/index.ts    # 浏览器 half：全高竖栏（上会话卡片 / 下小计）
+│   ├── index.mjs          # Host half：存储域 + HTTP API（小计）
+│   ├── livefeed-host.mjs  # Host half：dsh-livefeed 采集管线 + /api/dsh-livefeed（v0.6.0 合并）
+│   └── client/
+│       ├── index.ts       # 浏览器 half：全高竖栏（页签切换 小计 / 讯息 + 宽度拖拽）
+│       └── livefeed.js    # 讯息页组件 + 样式（合并自 dsh-livefeed/src/client/plugin.js）
 ├── prototype/index.html   # HTML 原型（样式基准）
 ├── docs/
 │   ├── design.md          # 设计文档（v0.4 融合版）

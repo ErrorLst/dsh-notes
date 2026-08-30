@@ -1,28 +1,37 @@
 // dsh-notes —— 浏览器 half（官方 client bundle，__ModuleLoader__ 契约）。
 //
-// v0.5.0 起移除常驻会话卡片：本插件只保留「小计」（全局/本工作区 tab + 待办
-// + 随记）。其余保留：
+// v0.6.0 合并 dsh-livefeed：左侧全高竖栏顶部新增「小计 / 讯息」页签，
+// 「讯息」页 = Linux Do 实时讯息面板（原 dsh-livefeed 的全部卡片/设置/轮询逻辑，
+// 组件见 ./livefeed.js；Host 由 src/livefeed-host.mjs 提供 /api/dsh-livefeed）。
+// 其余保留：
 //   1. shell.overlay 注册常驻条目（id: notes-dock）——左边全高竖栏：
 //      position:absolute，left/top 跟随侧栏列宽与会话头部下缘（测量 + 观察器）。
 //   2. 视图绑定：轨迹/上下文等非对话视图下整条竖栏隐藏（tab 栏为权威信号，
 //      三重触发：MutationObserver + tab 点击监听 + 1.5s 轮询重检）。
 //   3. 窄窗口自动折叠（<1024px，与 DSH 侧栏同阈值）：折叠为底部小胶囊；
 //      点击临时展开，回宽窗口恢复。无手动折叠、无持久化。
-//   4. 右缘宽度拖拽（localStorage 持久化）。
+//   4. 右缘宽度拖拽（localStorage 持久化，200~640px；生效宽度
+//      = min(拖拽宽, 与对话区可用留白)，绝不覆盖对话区；默认仍为自动适配）。
 //   5. 小计数据经 fetch('/api/dsh-notes') 读写；当前工作区解析链：
 //      当前会话 cwd（useSessions）→ 路径匹配工作区 → 兜底 recentWorkspaceId。
 //   6. 样式只使用 --dsw-alias-* 语义令牌。
 
 const React = require('react')
 const { useState, useEffect, useLayoutEffect, useRef, useCallback } = React
+// 「讯息」页组件与样式（合并自 dsh-livefeed；RPC 走 POST /api/dsh-livefeed）
+const { FeedPanel, FEED_CSS } = require('./livefeed')
 
 const STYLE_TAG_ID = 'dsh-notes-dock-style'
-/* 自适应宽度（v0.5.2 起取消手动拖拽与宽度上限）：
-   - 实际宽度 = 可用留白 - WIDTH_GAP（右侧与主会话区保持固定间距；无上限）
-   - 最小宽度动态计算（头部行单行所需宽度），放不下才隐藏（迟滞防抖）
+/* 自适应宽度（默认自动）：
+   - 实际宽度 = min(手动拖拽宽, 可用留白 - WIDTH_GAP)；未拖拽过 = 可用留白 - WIDTH_GAP
+   - 最小宽度动态计算（当前页头部行单行所需宽度），放不下才隐藏（迟滞防抖）
    - WIDTH_DEFAULT 仅用于 hero/空会话（无消息列可测）时的默认宽度 */
 const WIDTH_DEFAULT = 280
 const WIDTH_GAP = 16
+/* 手动拖拽宽度（右缘手柄）：200~640px，localStorage 持久化；null = 自动适配 */
+const WIDTH_DRAG_KEY = 'dsh-notes.dockWidth'
+const WIDTH_DRAG_MIN = 200
+const WIDTH_DRAG_MAX = 640
 const MEMO_DEBOUNCE_MS = 600
 const UNDO_TTL_MS = 5000
 const ICON_CHECK =
@@ -470,6 +479,43 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 .np-memo::placeholder { color: var(--dsw-alias-label-tertiary); }
 .np-memo:focus { border-color: var(--dsw-alias-brand-primary); }
 
+/* ===== 页面页签（小计 / 讯息） ===== */
+.np-pagetabs {
+  display: flex; gap: 2px; align-items: stretch; flex: none;
+  background: var(--dsw-alias-bg-layer-2);
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+.np-pagetab {
+  flex: 1; height: 34px; border: none; background: none;
+  color: var(--dsw-alias-label-secondary); font-size: 12.5px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  border-bottom: 2px solid transparent;
+  transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), color var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
+}
+.np-pagetab:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.np-pagetab.active { color: var(--dsw-alias-label-primary); font-weight: 600; border-bottom-color: var(--dsw-alias-state-business-primary); }
+
+/* ===== 讯息页（合并自 dsh-livefeed）：面板撑满 dock，去掉绝对定位 ===== */
+.dock-feed { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+.dock-feed .lf-panel {
+  position: static; width: 100%; max-width: none; height: 100%;
+  z-index: 0; border-left: none;
+}
+.dock-feed .lf-card { background: var(--dsw-alias-bg-layer-2); }
+.dock-feed .lf-card:hover { background: var(--dsw-alias-interactive-bg-hover-solid); }
+
+/* ===== 宽度拖拽手柄（右缘，竖直抓条） ===== */
+.dock-resize {
+  position: absolute; top: 0; bottom: 0; right: -6px; width: 12px;
+  z-index: 20; cursor: col-resize; touch-action: none;
+}
+.dock-resize::after {
+  content: ''; position: absolute; top: 0; bottom: 0; right: 0; width: 3px;
+  border-radius: 2px; background: transparent;
+  transition: background var(--ds-transition-duration-fast, 0.12s) var(--ds-ease-in-out, ease);
+}
+.dock-resize:hover::after, .dock-resize:active::after { background: var(--dsw-alias-state-business-primary); opacity: .8; }
+
 `
 
 function scopeOf(data, tab) {
@@ -479,6 +525,9 @@ function scopeOf(data, tab) {
 function NotesDock(props) {
   const useWorkspaces = props.useWorkspaces
   const useSessions = props.useSessions
+  const pluginCtx = props.pluginCtx // 合并插件的客户端 ctx（timer 服务：ctx.interval）
+  // 页面页签：notes = 小计（默认）/ feed = 讯息（dsh-livefeed）
+  const [page, setPage] = useState('notes')
   // 当前工作区解析链（按可靠性排序）：
   //   1) 当前会话 id ∈ workspace.sessionIds（权威归属）
   //   2) 会话 cwd → 归一化路径匹配 workspace.path
@@ -514,12 +563,23 @@ function NotesDock(props) {
   // 收缩至最小宽度仍放不下时才隐藏。covered = 隐藏；effWidth = 实际渲染宽度。
   const [covered, setCovered] = useState(false)
   const [effWidth, setEffWidth] = useState(WIDTH_DEFAULT)
+  // 手动拖拽宽度：null = 自动适配（默认）；拖过后生效宽度 = min(拖拽宽, 可用留白)
+  const [dragWidth, setDragWidth] = useState(() => {
+    try {
+      const v = Number.parseInt(localStorage.getItem(WIDTH_DRAG_KEY) || '', 10)
+      if (Number.isFinite(v)) return Math.max(WIDTH_DRAG_MIN, Math.min(WIDTH_DRAG_MAX, v))
+    } catch { /* localStorage 不可用则自动适配 */ }
+    return null
+  })
   // 供挂载 effect 闭包内测量读取（防陈旧值）；渲染时同步
   const leftRef = useRef(260)
   leftRef.current = left
   const effWidthRef = useRef(effWidth)
   const minWRef = useRef(0) // 最近一次测量出的「最小可用宽度」（卡片打开期间跳过测量，沿用缓存）
   effWidthRef.current = effWidth
+  const dragWidthRef = useRef(dragWidth)
+  dragWidthRef.current = dragWidth
+  const dragActiveRef = useRef(false)
   const coveredRef = useRef(false)
   coveredRef.current = covered
   const [data, setData] = useState({ global: { todos: [], memo: '' }, workspace: null })
@@ -685,48 +745,84 @@ function NotesDock(props) {
             const prevWidth = el0.style.width
             try {
               el0.style.width = 'max-content'
-              const rows = el0.querySelectorAll('.np-sec-head')
-              let full = 0
+              // 同时测量「小计」头部行与「讯息」头部行；当前页隐藏的行
+              // （display:none）矩形为 0，自动跳过 —— 只取当前页的最小宽度。
+              let full = 0          // 小计头部行最大完整宽
               let countFull = 0
-              for (const row of rows) {
+              let mxFeed = 0        // 讯息行最大完整宽（header / status / tabs）
+              let statusTextW = 0
+              for (const sel of ['.np-sec-head', '.lf-header', '.lf-status', '.lf-tabs']) {
+                const row = el0.querySelector(sel)
+                if (row === null) continue
                 // 关键：行自身也设 max-content —— flex 列子元素默认被父级拉伸，
-                // 长待办会把竖栏 max-content 撑宽并连带拉伸行矩形，导致测量
+                // 长待办/长卡片会把竖栏 max-content 撑宽并连带拉伸行矩形，导致测量
                 // 拿到竖栏整体宽度（minW 爆炸 → 整栏被隐藏）。
                 const prevRowW = row.style.width
                 row.style.width = 'max-content'
                 let w = 0
                 try { w = row.getBoundingClientRect().width } catch { w = 0 }
                 row.style.width = prevRowW
-                if (w > full) {
-                  full = w
-                  try {
-                    const c = row.querySelector('.np-sec-count')
-                    countFull = c !== null ? c.getBoundingClientRect().width : 0
-                  } catch { countFull = 0 }
+                if (w <= 0) continue
+                if (sel === '.np-sec-head') {
+                  if (w > full) {
+                    full = w
+                    try {
+                      const c = row.querySelector('.np-sec-count')
+                      countFull = c !== null ? c.getBoundingClientRect().width : 0
+                    } catch { countFull = 0 }
+                  }
+                } else {
+                  if (w > mxFeed) mxFeed = w
+                  if (sel === '.lf-status') {
+                    try {
+                      const st = row.querySelector('.lf-status-text')
+                      const sw = st !== null ? st.getBoundingClientRect().width : 0
+                      if (sw > statusTextW) statusTextW = sw
+                    } catch { /* ignore */ }
+                  }
                 }
               }
-              if (full > 0) minWRef.current = Math.max(120, full - countFull + 40 + 16)
+              const notesMin = full > 0 ? Math.max(120, full - countFull + 40 + 16) : 0
+              const feedMin = mxFeed > 0 ? Math.max(160, mxFeed - statusTextW + 60 + 8) : 0
+              if (notesMin > 0 || feedMin > 0) minWRef.current = Math.max(notesMin, feedMin, 120)
             } catch { /* 测量失败回退默认 */ } finally {
               el0.style.width = prevWidth
             }
           }
           if (minWRef.current > 0) minW = minWRef.current
-          // 迟滞带（HYST=24）：显示→隐藏 需 fit < minW；隐藏→显示 需 fit ≥ minW+HYST。
-          const HYST = 24
-          if (coveredRef.current) {
-            if (fit >= minW + HYST) next = false
-            else next = true
-          } else {
-            if (fit < minW) {
+          const manual = dragWidthRef.current
+          if (manual !== null) {
+            // 手动拖拽宽度：生效宽度 = min(拖拽宽, 可用留白)，绝不覆盖对话区；
+            // 留白小到不足 120px 才隐藏（无迟滞；用户意图明确）。
+            const target = Math.min(manual, fit)
+            if (target < 120) {
               next = true
             } else {
-              if (!cardOpen) setEffWidth((prev) => (Math.abs(prev - fit) < 1 ? prev : fit))
+              if (!cardOpen) setEffWidth((prev) => (Math.abs(prev - target) < 1 ? prev : target))
               next = false
+            }
+          } else {
+            // 自动适配：迟滞带（HYST=24）显示→隐藏 需 fit < minW；隐藏→显示 需 fit ≥ minW+HYST。
+            const HYST = 24
+            if (coveredRef.current) {
+              if (fit >= minW + HYST) next = false
+              else next = true
+            } else {
+              if (fit < minW) {
+                next = true
+              } else {
+                if (!cardOpen) setEffWidth((prev) => (Math.abs(prev - fit) < 1 ? prev : fit))
+                next = false
+              }
             }
           }
         } else {
-          // 无消息节点：显示（hero/空会话），宽度按偏好（卡片打开时同样冻结）
-          if (!cardOpen) setEffWidth((prev) => (prev === WIDTH_DEFAULT ? prev : WIDTH_DEFAULT))
+          // 无消息节点：显示（hero/空会话），宽度按偏好（手动宽度或默认；卡片打开时同样冻结）
+          if (!cardOpen) {
+            const manual2 = dragWidthRef.current
+            const target = manual2 !== null ? manual2 : WIDTH_DEFAULT
+            setEffWidth((prev) => (prev === target ? prev : target))
+          }
           next = false
         }
       }
@@ -936,6 +1032,76 @@ function NotesDock(props) {
 
   function onDockPointerDown() {
     hideTip()
+  }
+
+  /* ---------- 宽度拖拽（右缘手柄）：localStorage 持久化；绝不覆盖对话区 ---------- */
+  function gapToChat() {
+    const root = rootRef.current
+    if (root === null) return null
+    let frame = null
+    let probe = root.parentElement
+    while (probe !== null && probe !== document.body) {
+      const cs = getComputedStyle(probe)
+      if (cs.display === 'grid' && cs.gridTemplateColumns.split(' ').length >= 3) {
+        frame = probe
+        break
+      }
+      probe = probe.parentElement
+    }
+    if (frame === null) return null
+    const overlayEl = root.parentElement
+    let center = null
+    for (const child of frame.children) {
+      if (child === overlayEl || child.nodeType !== 1) continue
+      const cs = getComputedStyle(child)
+      if (cs.display === 'flex' && cs.flexDirection === 'column') {
+        center = child
+        break
+      }
+    }
+    if (center === null) return null
+    try {
+      const hit = center.querySelector('[data-chat-flow]')
+      if (hit === null) return null
+      const aLeft = frame.getBoundingClientRect().left + leftRef.current
+      const gap = hit.getBoundingClientRect().left - aLeft
+      return Math.max(0, gap - WIDTH_GAP)
+    } catch { return null }
+  }
+  function clampDragWidth(w) {
+    return Math.max(WIDTH_DRAG_MIN, Math.min(WIDTH_DRAG_MAX, Math.round(w)))
+  }
+  function onResizeStart(event) {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    event.preventDefault()
+    dragActiveRef.current = true
+    hideTip()
+    try { event.currentTarget.setPointerCapture(event.pointerId) } catch { /* ignore */ }
+  }
+  function onResizeMove(event) {
+    if (!dragActiveRef.current) return
+    const dock = rootRef.current
+    if (dock === null) return
+    const w = clampDragWidth(event.clientX - dock.getBoundingClientRect().left)
+    setDragWidth(w)
+    // 立即反馈宽度；同时按可用留白收缩，避免拖拽过程中盖住对话区
+    const fit = gapToChat()
+    const target = fit === null ? w : Math.min(w, fit)
+    if (target > 0) setEffWidth(target)
+  }
+  function onResizeEnd(event) {
+    if (!dragActiveRef.current) return
+    dragActiveRef.current = false
+    const dock = rootRef.current
+    if (dock === null) return
+    const w = clampDragWidth(event.clientX - dock.getBoundingClientRect().left)
+    setDragWidth(w)
+    try { localStorage.setItem(WIDTH_DRAG_KEY, String(w)) } catch { /* ignore */ }
+    // 触发定位 effect 的 resize 监听 → updateCovered 按 fit/minW 校正一次
+    try { window.dispatchEvent(new Event('resize')) } catch { /* ignore */ }
+  }
+  function onResizeCancel() {
+    dragActiveRef.current = false
   }
 
   /* ---------- 待办动作 ---------- */
@@ -1261,10 +1427,39 @@ function NotesDock(props) {
     React.createElement(
       'div',
       { key: 'body', className: 'dock-body' },
-      /* ===== 小计（v0.5.0 移除常驻会话卡片，竖栏整块为小计） ===== */
+      /* ===== 页面页签：小计 / 讯息 ===== */
+      React.createElement(
+        'div',
+        { key: 'pagetabs', className: 'np-pagetabs' },
+        React.createElement(
+          'button',
+          {
+            key: 'p-note',
+            type: 'button',
+            className: 'np-pagetab' + (page === 'notes' ? ' active' : ''),
+            onClick: () => setPage('notes'),
+          },
+          '小计',
+        ),
+        React.createElement(
+          'button',
+          {
+            key: 'p-feed',
+            type: 'button',
+            className: 'np-pagetab' + (page === 'feed' ? ' active' : ''),
+            onClick: () => setPage('feed'),
+          },
+          '讯息',
+        ),
+      ),
+      /* ===== 小计（页面一：全局/工作区 tab + 待办 + 随记） ===== */
       React.createElement(
         'section',
-        { className: 'np-section' },
+        {
+          key: 'notes-section',
+          className: 'np-section',
+          style: page === 'notes' ? undefined : { display: 'none' },
+        },
         React.createElement('div', { className: 'np-tabs' }, ...tabs),
         error === null
           ? null
@@ -1396,14 +1591,34 @@ function NotesDock(props) {
               ),
             ),
       ),
+      /* ===== 讯息（页面二：合并自 dsh-livefeed） ===== */
+      React.createElement(
+        'div',
+        {
+          key: 'dock-feed',
+          className: 'dock-feed',
+          style: page === 'feed' ? undefined : { display: 'none' },
+        },
+        React.createElement(FeedPanel, { timerCtx: pluginCtx }),
+      ),
     ),
+    /* ===== 右缘宽度拖拽手柄 ===== */
+    React.createElement('div', {
+      key: 'resize',
+      className: 'dock-resize',
+      'data-tip': '拖拽调整宽度',
+      onPointerDown: onResizeStart,
+      onPointerMove: onResizeMove,
+      onPointerUp: onResizeEnd,
+      onPointerCancel: onResizeCancel,
+    }),
     React.createElement('div', { key: 'tip', className: 'np-tip', ref: tipRef, hidden: true }),
   )
 }
 
 export default {
   name: 'notes-client',
-  inject: ['slots'],
+  inject: ['slots', 'timer'],
   apply(ctx) {
     ctx.effect(() => {
       if (typeof document === 'undefined') return
@@ -1411,13 +1626,13 @@ export default {
       const tag = document.createElement('style')
       tag.id = STYLE_TAG_ID
       tag.dataset.plugin = '@dsh-external/dsh-notes'
-      tag.textContent = DOCK_CSS
+      tag.textContent = DOCK_CSS + '\n' + FEED_CSS
       document.head.appendChild(tag)
       return () => { tag.remove() }
     })
     ctx.slots.inject('shell.overlay', () =>
       ctx.slots.register({ name: 'shell.overlay', id: 'notes-dock' }, (props) =>
-        React.createElement(NotesDock, props),
+        React.createElement(NotesDock, Object.assign({}, props, { pluginCtx: ctx })),
       ),
     )
   },

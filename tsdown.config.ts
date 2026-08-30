@@ -8,6 +8,10 @@ export default [
     target: 'es2024',
     outDir: 'lib',
     clean: true,
+    deps: {
+      // livefeed 合并：浏览器抓取用 playwright-core 动态 import，保持外部（profile 安装）
+      neverBundle: [/playwright-core/],
+    },
   },
   {
     name: '@dsh-external/dsh-notes/client',

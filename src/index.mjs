@@ -15,14 +15,21 @@
 //   v0.5.0 起移除「常驻会话」（scard-* 动作与客户端会话卡片），仅保留小计。
 //   3. 所有小计变更走插件内 promise 串行链（读-改-写），返回值只含标量拷贝。
 //
+// v0.6.0 合并 dsh-livefeed（Host half 见 ./livefeed-host.mjs）：
+//   - 采集管线 / 配置 / 去重状态 / HTTP API（/api/dsh-livefeed）原样保留，
+//     数据目录 ~/.dsh/dsh-livefeed/ 不变（已读/已采集历史不丢失）；
+//   - 浏览器端「讯息」页签与其会话（POST /api/dsh-livefeed）完全兼容。
+//   - 新增硬依赖服务：timer / web / llm / fs / agentDefaultModel（供采集管线使用）。
+//
 // 隔离边界：小计内容对 agent 完全不可见（无模型工具、无 prompt 注入、
 // 不写会话日志，仅 notes.json 域）。
 
 export const name = 'dsh-notes'
 
-export const inject = ['webServer']
+export const inject = ['webServer', 'timer', 'web', 'llm', 'fs', 'agentDefaultModel']
 
 import { join } from 'node:path'
+import { applyLivefeedHost } from './livefeed-host.mjs'
 
 const TODO_TEXT_MAX = 500
 const DETAIL_MAX = 20000
@@ -87,6 +94,9 @@ function snapshotOf(domain, workspaceId) {
 }
 
 export function apply(ctx, config = {}) {
+  // 合并自 dsh-livefeed：Linux Do 采集管线 + /api/dsh-livefeed（数据目录不变）
+  applyLivefeedHost(ctx)
+
   const webServer = ctx.webServer
   const storageDomain = ctx.get('storageDomain')
   if (storageDomain === undefined) {

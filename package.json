@@ -1,7 +1,7 @@
 {
   "name": "@dsh-external/dsh-notes",
-  "description": "侧栏与对话区之间的全高竖栏「小计」：全局+工作区 todo/随记，DSH 主题令牌适配；仅对话视图显示、窄窗口自动折叠",
-  "version": "0.5.3",
+  "description": "侧栏与对话区之间的全高竖栏：页签切换「小计」（全局+工作区 todo/随记）与「讯息」（Linux Do 实时讯息，合并自 dsh-livefeed）；右缘可拖拽调宽，DSH 主题令牌适配",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "main": "lib/index.mjs",
@@ -34,6 +34,9 @@
   },
   "scripts": {
     "build": "tsdown --config ./tsdown.config.ts"
+  },
+  "dependencies": {
+    "playwright-core": "^1.62.1"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1"
