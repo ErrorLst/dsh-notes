@@ -58,7 +58,9 @@ const DOCK_CSS = `
   border-right: 1px solid var(--dsw-alias-border-l1);
   z-index: 10;
   font-family: var(--dsw-font-family);
-  font-size: 12px;
+  /* 字体随会话设置（ui-theme.fontSize）：12px 基准 + 会话 delta，1:1 跟随 */
+  --dsh-notes-font-base: calc(12px + var(--dsh-content-font-delta, 0px));
+  font-size: calc(var(--dsh-notes-font-base) * 1);
   color: var(--dsw-alias-label-primary);
   box-sizing: border-box;
   --dsh-notes-shadow: 0 8px 28px rgba(15, 17, 21, 0.14), 0 2px 8px rgba(15, 17, 21, 0.08);
@@ -92,7 +94,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 .np-tab {
   padding: 3px 10px;
   border-radius: 999px;
-  font-size: 11.5px;
+  font-size: calc(var(--dsh-notes-font-base) * 0.9583);
   color: var(--dsw-alias-label-secondary);
   max-width: 160px;
   overflow: hidden;
@@ -109,7 +111,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   border-radius: 8px;
   background: var(--dsw-alias-interactive-bg-hover-danger);
   color: var(--dsw-alias-state-error-primary);
-  font-size: 11.5px;
+  font-size: calc(var(--dsh-notes-font-base) * 0.9583);
 }
 
 .np-sec-todo {
@@ -124,8 +126,8 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 .np-sec-title { flex-shrink: 0; }
 .np-clear { flex-shrink: 0; }
 .np-sec-count { flex-shrink: 1; min-width: 40px; overflow: hidden; text-overflow: ellipsis; }
-.np-sec-title { font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; color: var(--dsw-alias-label-tertiary); }
-.np-sec-count { font-size: 10.5px; color: var(--dsw-alias-label-tertiary); }
+.np-sec-title { font-size: calc(var(--dsh-notes-font-base) * 0.875); font-weight: 600; letter-spacing: 0.04em; color: var(--dsw-alias-label-tertiary); }
+.np-sec-count { font-size: calc(var(--dsh-notes-font-base) * 0.875); color: var(--dsw-alias-label-tertiary); }
 /* 待办内容卡片：与随记卡片同款（边框/圆角/间距），内部输入与列表无边框 */
 .np-todo-card {
   flex: 1; min-height: 0; display: flex; flex-direction: column;
@@ -144,7 +146,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   border: 1px solid var(--dsw-alias-border-l2);
   background: var(--dsw-specific-input-major);
   color: var(--dsw-alias-label-primary);
-  font-size: 12px;
+  font-size: calc(var(--dsh-notes-font-base) * 1);
   outline: none;
   transition: border-color var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
 }
@@ -156,7 +158,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   border-radius: 7px;
   background: var(--dsw-alias-button-primary-fill);
   color: var(--dsw-alias-label-primary-foreground);
-  font-size: 12px;
+  font-size: calc(var(--dsh-notes-font-base) * 1);
   font-weight: 500;
   transition: opacity var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
 }
@@ -196,7 +198,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   from { opacity: 0.35; transform: scaleX(0.55); }
   to { opacity: 1; transform: scaleX(1); }
 }
-.np-item.pinned .np-text::after { content: ' 📌'; font-size: 9px; }
+.np-item.pinned .np-text::after { content: ' 📌'; font-size: calc(var(--dsh-notes-font-base) * 0.75); }
 
 .np-grip {
   flex: none;
@@ -237,7 +239,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 .np-text {
   flex: 1;
   min-width: 0;
-  font-size: 12px;
+  font-size: calc(var(--dsh-notes-font-base) * 1);
   line-height: 1.45;
   color: var(--dsw-alias-label-primary);
   word-break: break-all;
@@ -326,7 +328,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   padding: 6px 8px 6px 10px;
   border-bottom: 1px solid var(--dsw-alias-border-l1);
 }
-.np-detail-head .t { flex: 1; font-size: 12.5px; font-weight: 500; line-height: 20px; }
+.np-detail-head .t { flex: 1; font-size: calc(var(--dsh-notes-font-base) * 1.0417); font-weight: 500; line-height: 20px; }
 .np-detail-close {
   width: 22px;
   height: 22px;
@@ -334,7 +336,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   color: var(--dsw-alias-label-tertiary);
   background: none;
   border: none;
-  font-size: 14px;
+  font-size: calc(var(--dsh-notes-font-base) * 1.1667);
   line-height: 1;
   cursor: pointer;
 }
@@ -349,7 +351,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   overflow-anchor: none; /* 关闭滚动锚定：重渲染/内容变化不触发滚动位置漂移 */
 }
 .np-detail-field { display: flex; flex-direction: column; gap: 3px; }
-.np-detail-field label { font-size: 11px; color: var(--dsw-alias-label-tertiary); }
+.np-detail-field label { font-size: calc(var(--dsh-notes-font-base) * 0.9167); color: var(--dsw-alias-label-tertiary); }
 .np-detail-title {
   height: 30px;
   padding: 0 8px;
@@ -357,7 +359,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   border-radius: 7px;
   background: var(--dsw-specific-input-major);
   outline: none;
-  font-size: 12.5px;
+  font-size: calc(var(--dsh-notes-font-base) * 1.0417);
   color: var(--dsw-alias-label-primary);
   user-select: text;
   -webkit-user-select: text;
@@ -372,7 +374,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   border-radius: 7px;
   background: var(--dsw-specific-input-major);
   outline: none;
-  font-size: 12.5px;
+  font-size: calc(var(--dsh-notes-font-base) * 1.0417);
   line-height: 1.55;
   color: var(--dsw-alias-label-primary);
   user-select: text;
@@ -383,10 +385,10 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 10px;
-  font-size: 10.5px;
+  font-size: calc(var(--dsh-notes-font-base) * 0.875);
   color: var(--dsw-alias-label-tertiary);
 }
-.np-detail-status { font-size: 10.5px; color: var(--dsw-alias-label-tertiary); }
+.np-detail-status { font-size: calc(var(--dsh-notes-font-base) * 0.875); color: var(--dsw-alias-label-tertiary); }
 /* 待办空态：图标 + 引导文案 */
 .np-empty {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -400,8 +402,8 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   color: var(--dsw-alias-label-tertiary);
 }
 .np-empty-icon svg { width: 15px; height: 15px; }
-.np-empty p { margin: 0; font-size: 12px; color: var(--dsw-alias-label-secondary); }
-.np-empty .sub { font-size: 10.5px; color: var(--dsw-alias-label-tertiary); }
+.np-empty p { margin: 0; font-size: calc(var(--dsh-notes-font-base) * 1); color: var(--dsw-alias-label-secondary); }
+.np-empty .sub { font-size: calc(var(--dsh-notes-font-base) * 0.875); color: var(--dsw-alias-label-tertiary); }
 
 /* 列表滚动条（与 DSH 视觉一致） */
 .np-list::-webkit-scrollbar { width: 8px; }
@@ -418,12 +420,12 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   background: var(--dsw-alias-bg-overlay);
   border: 1px solid var(--dsw-alias-border-l2);
   box-shadow: var(--dsh-notes-shadow);
-  font-size: 11.5px;
+  font-size: calc(var(--dsh-notes-font-base) * 0.9583);
   color: var(--dsw-alias-label-secondary);
 }
 .np-undo button {
   margin-left: auto;
-  font-size: 11.5px;
+  font-size: calc(var(--dsh-notes-font-base) * 0.9583);
   font-weight: 500;
   color: var(--dsw-alias-brand-primary);
   padding: 2px 6px;
@@ -440,7 +442,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   background: var(--dsw-alias-bg-overlay);
   border: 1px solid var(--dsw-alias-border-l2);
   box-shadow: var(--dsh-notes-shadow);
-  font-size: 11px;
+  font-size: calc(var(--dsh-notes-font-base) * 0.9167);
   line-height: 1.4;
   color: var(--dsw-alias-label-primary);
   white-space: nowrap;
@@ -455,7 +457,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   flex: 1 1 45%;
   border-top: 1px solid var(--dsw-alias-border-l1);
 }
-.np-memo-status { font-size: 10.5px; color: var(--dsw-alias-label-tertiary); margin-left: auto; }
+.np-memo-status { font-size: calc(var(--dsh-notes-font-base) * 0.875); color: var(--dsw-alias-label-tertiary); margin-left: auto; }
 .np-memo {
   flex: 1;
   min-height: 56px;
@@ -465,7 +467,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   border: 1px solid var(--dsw-alias-border-l2);
   background: var(--dsw-specific-input-major);
   color: var(--dsw-alias-label-primary);
-  font-size: 12px;
+  font-size: calc(var(--dsh-notes-font-base) * 1);
   line-height: 1.5;
   resize: none;
   outline: none;
@@ -487,7 +489,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 }
 .np-pagetab {
   flex: 1; height: 34px; border: none; background: none;
-  color: var(--dsw-alias-label-secondary); font-size: 12.5px;
+  color: var(--dsw-alias-label-secondary); font-size: calc(var(--dsh-notes-font-base) * 1.0417);
   display: inline-flex; align-items: center; justify-content: center; gap: 4px;
   border-bottom: 2px solid transparent;
   transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), color var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
@@ -525,6 +527,26 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 }
 .dock-resize:hover::after, .dock-resize:active::after { background: var(--dsw-alias-state-business-primary); opacity: .8; }
 
+
+/* ===== 悬浮迷你滚动条（dock 内所有滚动区）：仅滚动/悬停时显示，非必要隐藏 ===== */
+.dsh-notes-dock .np-list::-webkit-scrollbar,
+.dock-feed .lf-scroll::-webkit-scrollbar { width: 5px; }
+.dsh-notes-dock .np-list::-webkit-scrollbar-thumb,
+.dock-feed .lf-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background-clip: content-box;
+  transition: background 0.18s var(--ds-ease-in-out, ease);
+}
+.dsh-notes-dock .np-list.scr-on::-webkit-scrollbar-thumb,
+.dock-feed .lf-scroll.scr-on::-webkit-scrollbar-thumb {
+  background: var(--dsw-alias-scrollbar-bg-l1);
+}
+.dsh-notes-dock .np-list.scr-on::-webkit-scrollbar-thumb:hover,
+.dock-feed .lf-scroll.scr-on::-webkit-scrollbar-thumb:hover {
+  background: var(--dsw-alias-scrollbar-hover-l1);
+}
 `
 
 function scopeOf(data, tab) {
@@ -1042,6 +1064,42 @@ function NotesDock(props) {
   function onDockPointerDown() {
     hideTip()
   }
+
+  /* ---------- 悬浮滚动条：滚动/悬停时显示，1.5s 无操作后隐藏 ---------- */
+  useEffect(() => {
+    const root = rootRef.current
+    if (root === null) return
+    const timers = new Map()
+    const onScroll = (event) => {
+      const el = event.currentTarget
+      el.classList.add('scr-on')
+      const prev = timers.get(el)
+      if (prev !== undefined) clearTimeout(prev)
+      timers.set(el, setTimeout(() => el.classList.remove('scr-on'), 1500))
+    }
+    const onEnter = (event) => { event.currentTarget.classList.add('scr-on') }
+    const onLeave = (event) => { event.currentTarget.classList.remove('scr-on') }
+    const attach = () => {
+      for (const el of Array.from(root.querySelectorAll('.np-list, .lf-scroll'))) {
+        if (el.dataset.scrHooked === '1') continue
+        el.dataset.scrHooked = '1'
+        el.addEventListener('scroll', onScroll, { passive: true })
+        el.addEventListener('mouseenter', onEnter)
+        el.addEventListener('mouseleave', onLeave)
+      }
+    }
+    attach()
+    return () => {
+      for (const el of Array.from(root.querySelectorAll('.np-list, .lf-scroll'))) {
+        if (el.dataset.scrHooked !== '1') continue
+        el.dataset.scrHooked = '0'
+        el.removeEventListener('scroll', onScroll)
+        el.removeEventListener('mouseenter', onEnter)
+        el.removeEventListener('mouseleave', onLeave)
+      }
+      for (const t of timers.values()) clearTimeout(t)
+    }
+  }, [])
 
   /* ---------- 宽度拖拽（右缘手柄）：localStorage 持久化；绝不覆盖对话区 ---------- */
   function gapToChat() {
