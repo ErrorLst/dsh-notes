@@ -1,5 +1,8 @@
 # dsh-notes 设计文档
 
+
+> [DSH 版本标注 2026-09，DSH 0.1.2-alpha.1] 本文档写于 DSH 0.1.1-rc.2 时期：文中引用的 @deepseek-ai/dsh-client-runtime 已更名 @deepseek-ai/dsh-client-store（useSessions/useWorkspaces/useProjection 等客户端座席仍在，由新包及 ui-session/ui-chat 提供）；@deepseek-ai/dsh-host-apiproxy 已删除，拆分为 @deepseek-ai/dsh-api-session-controller、dsh-api-settings-controller、dsh-api-workspace-controller，客户端不再使用 connection.api。本文仅作历史设计参照，实现契约请以当前 DSH 源码为准。
+
 > 版本：0.4 · 状态：**已实现（v0.4.27）** · 关联原型：`prototype/index.html`
 >
 > 变更记录：
