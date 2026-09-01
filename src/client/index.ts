@@ -20,19 +20,6 @@ const { useState, useEffect, useLayoutEffect, useRef, useCallback } = React
 
 const STYLE_TAG_ID = 'dsh-notes-dock-style'
 
-/* ---- 诊断（临时）：页面 longtask 监控：主线程任一任务 >50ms 即记录 ---- */
-if (typeof PerformanceObserver !== 'undefined') {
-  try {
-    const po = new PerformanceObserver((list) => {
-      for (const entry of list.getEntries()) {
-        if (entry.duration >= 50) {
-          console.debug('[dsh-notes][longtask]', Math.round(entry.duration), 'ms @', Math.round(entry.startTime))
-        }
-      }
-    })
-    po.observe({ entryTypes: ['longtask'] })
-  } catch { /* ignore */ }
-}
 /* 自适应宽度（默认自动）：
    - 实际宽度 = min(手动拖拽宽, 可用留白 - WIDTH_GAP)；未拖拽过 = 可用留白 - WIDTH_GAP
    - 最小宽度动态计算（当前页头部行单行所需宽度），放不下才隐藏（迟滞防抖）
@@ -630,6 +617,8 @@ function NotesDock(props) {
   const memoTimerRef = useRef(null)
   const dataForRef = useRef(null)
   const boundKeyRef = useRef(null)
+  const boundDataRef = useRef(null)
+  const memoTaRef = useRef(null)
   const undoTimerRef = useRef(null)
   const tipRef = useRef(null)
   const dragIdRef = useRef(null)
@@ -864,14 +853,11 @@ function NotesDock(props) {
       if (raf !== 0) return
       raf = requestAnimationFrame(() => {
         raf = 0
-        const t0 = performance.now()
         scrollEl = findScrollBody()
         updateLeft()
         updateTop()
         updateCovered()
         setViewIsChat(detectChatView())
-        const dt = performance.now() - t0
-        if (dt > 30) console.debug('[dsh-notes][frame]', Math.round(dt), 'ms')
       })
     }
     const onResize = scheduleUpdate
@@ -925,26 +911,19 @@ function NotesDock(props) {
   /* ---------- 小计数据加载（挂载 / 工作区切换 / 窗口聚焦） ---------- */
   useEffect(() => {
     let alive = true
-    const begin = performance.now()
-    console.debug('[dsh-notes] wsId change ->', workspaceId ? String(workspaceId).slice(0, 8) : 'none', '@', Math.round(begin))
     /* 缓存优先：先渲染本地数据（立即），fetch 后台静默刷新 */
     const cached = notesCacheRead(workspaceId)
     if (cached !== null && alive) {
       dataForRef.current = workspaceId ?? null
       setData(cached)
       setError(null)
-      console.debug('[dsh-notes] rendered from cache')
     }
     const load = () => {
-      const t0 = performance.now()
       const query = workspaceId !== undefined ? `?workspaceId=${encodeURIComponent(workspaceId)}` : ''
-      console.debug('[dsh-notes] fetch start', query || 'no-ws', '@', Math.round(t0))
       fetch(`/api/dsh-notes${query}`, { cache: 'no-store' })
         .then((response) => response.json())
         .then((result) => {
           if (!alive) return
-          console.debug('[dsh-notes] fetch resolved in', Math.round(performance.now() - t0), 'ms; ok=', result.ok,
-            result.ok ? 'ws todos=' + (result.workspace ? (result.workspace.todos?.length ?? 0) : 'null') : 'err=' + result.error)
           if (result.ok === true) {
             const next = { global: result.global, workspace: result.workspace }
             dataForRef.current = workspaceId ?? null
@@ -1029,15 +1008,31 @@ function NotesDock(props) {
     saveMemoNow()
   }
 
-  /* ---------- 作用域切换时同步 textarea ---------- */
+  /* ---------- 作用域切换/数据到达时同步 textarea ----------
+     绑定以「数据对象」为准：同键后台刷新不重复同步；换键后若数据未到位
+     （data 仍是旧对象）则清空草稿并解除绑定，防止把上个工作区的随记
+     编辑后误存进新工作区（v0.7.8 的随记跨工作区串写/消失根因）。 */
   const scopeKey = tab === 'global' ? 'global' : `workspace:${workspaceId ?? ''}`
   useEffect(() => {
     if (tab === 'workspace' && (workspaceId === undefined || dataForRef.current !== workspaceId)) return
     const effectiveKey = tab === 'global' ? 'global' : `workspace:${dataForRef.current ?? ''}`
-    if (boundKeyRef.current === effectiveKey) return
     const scope = tab === 'global' ? data.global : data.workspace
     if (scope === null) return
+    const keyChanged = boundKeyRef.current !== effectiveKey
+    if (boundDataRef.current === data) {
+      if (keyChanged) {
+        boundKeyRef.current = effectiveKey
+        boundDataRef.current = null
+        setMemoText('')
+        memoTextRef.current = ''
+        dirtyRef.current = false
+        setMemoStatus('')
+      }
+      return
+    }
+    if (!keyChanged && memoTaRef.current !== null && document.activeElement === memoTaRef.current) return
     boundKeyRef.current = effectiveKey
+    boundDataRef.current = data
     setMemoText(scope.memo)
     memoTextRef.current = scope.memo
     dirtyRef.current = false
@@ -1559,6 +1554,7 @@ function NotesDock(props) {
           ),
           React.createElement('textarea', {
             className: 'np-memo',
+            ref: memoTaRef,
             placeholder: '随意记录点什么…（自动保存）',
             spellCheck: false,
             value: memoText,
