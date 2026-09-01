@@ -269,6 +269,9 @@ export { FEED_CSS };
     /* ── 主面板 ── */
     function FeedPanel(props) {
       const timerCtx = props.timerCtx;
+      /* 未读角标：把最新状态上报给宿主 dock（页签徽标），ref 保证闭包最新 */
+      const onStateRef = React.useRef(props.onState);
+      onStateRef.current = props.onState;
       const [data, setData] = React.useState(null);
       const [tip, setTip] = React.useState(null);
       const [settingsOpen, setSettingsOpen] = React.useState(false);
@@ -282,7 +285,10 @@ export { FEED_CSS };
       const refresh = React.useCallback(async () => {
         try {
           const res = await rpc('cards');
-          if (res && res.status) setData(res);
+          if (res && res.status) {
+            setData(res);
+            if (onStateRef.current) onStateRef.current(res);
+          }
         } catch (_) { /* 轮询失败静默 */ }
       }, []);
 

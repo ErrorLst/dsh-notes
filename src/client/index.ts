@@ -496,6 +496,15 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 }
 .np-pagetab:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 .np-pagetab.active { color: var(--dsw-alias-label-primary); font-weight: 600; border-bottom-color: var(--dsw-alias-state-business-primary); }
+.np-unread-badge {
+  min-width: 16px; height: 16px; padding: 0 5px; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--dsw-alias-state-error-primary, #d94140);
+  color: var(--dsw-alias-label-primary-foreground, #fff);
+  font-size: calc(var(--dsh-notes-font-base) * 0.75);
+  line-height: 16px; font-weight: 600;
+  border-bottom: none;
+}
 
 /* ===== 讯息页（合并自 dsh-livefeed）：面板撑满 dock，去掉绝对定位 ===== */
 .dock-feed { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
@@ -559,6 +568,7 @@ function NotesDock(props) {
   const pluginCtx = props.pluginCtx // 合并插件的客户端 ctx（timer 服务：ctx.interval）
   // 页面页签：notes = 小计（默认）/ feed = 讯息（dsh-livefeed）
   const [page, setPage] = useState('notes')
+  const [feedUnread, setFeedUnread] = useState(0) // 讯息未读数（页签角标；0 时不显示）
   // 当前工作区解析链（按可靠性排序）：
   //   1) 当前会话 id ∈ workspace.sessionIds（权威归属）
   //   2) 会话 cwd → 归一化路径匹配 workspace.path
@@ -1517,6 +1527,11 @@ function NotesDock(props) {
             onClick: () => setPage('feed'),
           },
           '讯息',
+          feedUnread > 0 ? React.createElement(
+            'span',
+            { key: 'feed-unread', className: 'np-unread-badge' },
+            feedUnread > 99 ? '99+' : String(feedUnread),
+          ) : null,
         ),
       ),
       /* ===== 小计（页面一：全局/工作区 tab + 待办 + 随记） ===== */
@@ -1666,7 +1681,12 @@ function NotesDock(props) {
           className: 'dock-feed',
           style: page === 'feed' ? undefined : { display: 'none' },
         },
-        React.createElement(FeedPanel, { timerCtx: pluginCtx }),
+        React.createElement(FeedPanel, {
+          timerCtx: pluginCtx,
+          onState: (s) => setFeedUnread(
+            s && Array.isArray(s.cards) ? s.cards.filter((c) => !c.read).length : 0,
+          ),
+        }),
       ),
     ),
     /* ===== 右缘宽度拖拽手柄 ===== */
