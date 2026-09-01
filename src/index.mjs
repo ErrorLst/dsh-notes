@@ -23,7 +23,11 @@
 
 export const name = 'dsh-notes'
 
-export const inject = ['webServer']
+// alpha.3 服务解析契约：跨树服务必须声明式 inject（cordis 按 fiber 隔离命名空间，
+// 只有声明的名称才会被注入）。storageDomain 由 storage-domain 插件在子 fiber 中
+// provide —— 旧版用 ctx.get('storageDomain') 探测，在严格宿主上得到 undefined，
+// notes API 被静默禁用（客户端报「存储不可用」）。
+export const inject = ['webServer', 'storageDomain']
 
 
 const TODO_TEXT_MAX = 500
@@ -90,11 +94,7 @@ function snapshotOf(domain, workspaceId) {
 
 export function apply(ctx, config = {}) {
   const webServer = ctx.webServer
-  const storageDomain = ctx.get('storageDomain')
-  if (storageDomain === undefined) {
-    ctx.logger.error('[dsh-notes] storageDomain unavailable; notes API disabled')
-    return
-  }
+  const storageDomain = ctx.storageDomain
 
   // 串行链：本插件所有小计变更依次执行，避免 global/记录读-改-写竞态
   let chain = Promise.resolve()
