@@ -611,6 +611,7 @@ function NotesDock(props) {
   const detailScrollRef = useRef({ body: 0, ta: 0 })
   const lastDetailValueRef = useRef(null)
   const [memoText, setMemoText] = useState('')
+  const lastTypedAtRef = useRef(0) // 距上次击键的时间免疫窗（防保存响应回写）
   const [memoStatus, setMemoStatus] = useState('')
   const memoTextRef = useRef('')
   const dirtyRef = useRef(false)
@@ -992,6 +993,7 @@ function NotesDock(props) {
 
   function onMemoInput(event) {
     const value = event.target.value
+    lastTypedAtRef.current = Date.now()
     setMemoText(value)
     memoTextRef.current = value
     dirtyRef.current = true
@@ -1018,10 +1020,11 @@ function NotesDock(props) {
     const effectiveKey = tab === 'global' ? 'global' : `workspace:${dataForRef.current ?? ''}`
     const scope = tab === 'global' ? data.global : data.workspace
     if (scope === null) return
-    /* 输入中（聚焦）一律不回写：包括换键清空分支。
-       activeElement 判定放在最前，任何数据到达（防抖保存响应/后台刷新/
-       focus 重载/换键缓存渲染）都不得覆盖正在输入的草稿——否则服务端旧
-       memo 会在聚焦瞬间的竞态窗口回写，表现为「// 折叠成 /」。 */
+    /* 输入中一律不回写（双保险）：
+       1) 时间免疫闸：距上次击键 <2s（涵盖"每保存完才打下一字符"的慢速
+          输入与聚焦判定失准窗口）——任何数据到达都不得覆盖草稿；
+       2) 聚焦判定：activeElement === textarea。 */
+    if (Date.now() - lastTypedAtRef.current < 2000) return
     if (memoTaRef.current !== null && document.activeElement === memoTaRef.current) return
     const keyChanged = boundKeyRef.current !== effectiveKey
     if (boundDataRef.current === data) {
