@@ -41,6 +41,23 @@ const WIDTH_DEFAULT = 280
 const WIDTH_GAP = 16
 /* 手动拖拽宽度（右缘手柄）：200~640px，localStorage 持久化；null = 自动适配 */
 const WIDTH_DRAG_KEY = 'dsh-notes.dockWidth'
+/* 小计数据本地缓存（按工作区）：服务端被会话切换堵住时先渲染缓存内容，
+   后台 fetch 静默刷新，消除「内容几秒后才出现」的可感知延迟。 */
+const NOTES_CACHE_KEY = 'dsh-notes.cache.v1'
+function notesCacheRead(workspaceId) {
+  try {
+    const j = JSON.parse(localStorage.getItem(NOTES_CACHE_KEY) || '{}')
+    const hit = j[workspaceId ?? 'global']
+    return hit && hit.data && (hit.global || hit.workspace) ? hit.data : null
+  } catch { return null }
+}
+function notesCacheWrite(workspaceId, data) {
+  try {
+    const j = JSON.parse(localStorage.getItem(NOTES_CACHE_KEY) || '{}')
+    j[workspaceId ?? 'global'] = { data, at: Date.now() }
+    localStorage.setItem(NOTES_CACHE_KEY, JSON.stringify(j))
+  } catch { /* ignore */ }
+}
 const WIDTH_DRAG_MIN = 200
 const WIDTH_DRAG_MAX = 640
 const MEMO_DEBOUNCE_MS = 600
@@ -910,6 +927,14 @@ function NotesDock(props) {
     let alive = true
     const begin = performance.now()
     console.debug('[dsh-notes] wsId change ->', workspaceId ? String(workspaceId).slice(0, 8) : 'none', '@', Math.round(begin))
+    /* 缓存优先：先渲染本地数据（立即），fetch 后台静默刷新 */
+    const cached = notesCacheRead(workspaceId)
+    if (cached !== null && alive) {
+      dataForRef.current = workspaceId ?? null
+      setData(cached)
+      setError(null)
+      console.debug('[dsh-notes] rendered from cache')
+    }
     const load = () => {
       const t0 = performance.now()
       const query = workspaceId !== undefined ? `?workspaceId=${encodeURIComponent(workspaceId)}` : ''
@@ -921,9 +946,11 @@ function NotesDock(props) {
           console.debug('[dsh-notes] fetch resolved in', Math.round(performance.now() - t0), 'ms; ok=', result.ok,
             result.ok ? 'ws todos=' + (result.workspace ? (result.workspace.todos?.length ?? 0) : 'null') : 'err=' + result.error)
           if (result.ok === true) {
+            const next = { global: result.global, workspace: result.workspace }
             dataForRef.current = workspaceId ?? null
-            setData({ global: result.global, workspace: result.workspace })
+            setData(next)
             setError(null)
+            notesCacheWrite(workspaceId, next)
           } else {
             setError(result.error ?? 'load-failed')
           }
@@ -933,10 +960,17 @@ function NotesDock(props) {
         })
     }
     load()
-    window.addEventListener('focus', load)
+    /* focus 触发与切换期间的重复加载合并，避免同一事件风暴多份请求排队 */
+    let focusTimer = null
+    const onFocus = () => {
+      if (focusTimer !== null) clearTimeout(focusTimer)
+      focusTimer = setTimeout(load, 300)
+    }
+    window.addEventListener('focus', onFocus)
     return () => {
       alive = false
-      window.removeEventListener('focus', load)
+      if (focusTimer !== null) clearTimeout(focusTimer)
+      window.removeEventListener('focus', onFocus)
     }
   }, [workspaceId])
 
