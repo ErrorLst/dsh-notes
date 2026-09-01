@@ -48,7 +48,7 @@ function notesCacheRead(workspaceId) {
   try {
     const j = JSON.parse(localStorage.getItem(NOTES_CACHE_KEY) || '{}')
     const hit = j[workspaceId ?? 'global']
-    return hit && hit.data && (hit.global || hit.workspace) ? hit.data : null
+    return hit && hit.data && (hit.data.global || hit.data.workspace) ? hit.data : null
   } catch { return null }
 }
 function notesCacheWrite(workspaceId, data) {
