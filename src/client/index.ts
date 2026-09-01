@@ -1,9 +1,8 @@
 // dsh-notes —— 浏览器 half（官方 client bundle，__ModuleLoader__ 契约）。
 //
-// v0.6.0 合并 dsh-livefeed：左侧全高竖栏顶部新增「小计 / 讯息」页签，
-// 「讯息」页 = Linux Do 实时讯息面板（原 dsh-livefeed 的全部卡片/设置/轮询逻辑，
-// 组件见 ./livefeed.js；Host 由 src/livefeed-host.mjs 提供 /api/dsh-livefeed）。
-// 其余保留：
+// v0.7.0 移除 dsh-livefeed：「讯息」页签/页、未读角标与 /api/dsh-livefeed 轮询
+// 全部删除（livefeed.js / livefeed-host.mjs 已删除；~/.dsh/dsh-livefeed/ 数据目录保留）。
+// 竖栏仅剩「小计」，保留：
 //   1. shell.overlay 注册常驻条目（id: notes-dock）——左边全高竖栏：
 //      position:absolute，left/top 跟随侧栏列宽与会话头部下缘（测量 + 观察器）。
 //   2. 视图绑定：轨迹/上下文等非对话视图下整条竖栏隐藏（tab 栏为权威信号，
@@ -18,8 +17,6 @@
 
 const React = require('react')
 const { useState, useEffect, useLayoutEffect, useRef, useCallback } = React
-// 「讯息」页组件与样式（合并自 dsh-livefeed；RPC 走 POST /api/dsh-livefeed）
-const { FeedPanel, FEED_CSS } = require('./livefeed')
 
 const STYLE_TAG_ID = 'dsh-notes-dock-style'
 /* 自适应宽度（默认自动）：
@@ -481,48 +478,6 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 .np-memo::placeholder { color: var(--dsw-alias-label-tertiary); }
 .np-memo:focus { border-color: var(--dsw-alias-brand-primary); }
 
-/* ===== 页面页签（小计 / 讯息） ===== */
-.np-pagetabs {
-  display: flex; gap: 2px; align-items: stretch; flex: none;
-  background: var(--dsw-alias-bg-layer-2);
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
-}
-.np-pagetab {
-  flex: 1; height: 34px; border: none; background: none;
-  color: var(--dsw-alias-label-secondary); font-size: calc(var(--dsh-notes-font-base) * 1.0417);
-  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
-  border-bottom: 2px solid transparent;
-  transition: background var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease), color var(--ds-transition-duration-fast, 0.1s) var(--ds-ease-in-out, ease);
-}
-.np-pagetab:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
-.np-pagetab.active { color: var(--dsw-alias-label-primary); font-weight: 600; border-bottom-color: var(--dsw-alias-state-business-primary); }
-.np-unread-badge {
-  min-width: 16px; height: 16px; padding: 0 5px; border-radius: 8px;
-  display: inline-flex; align-items: center; justify-content: center;
-  background: var(--dsw-alias-state-error-primary, #d94140);
-  color: var(--dsw-alias-label-primary-foreground, #fff);
-  font-size: calc(var(--dsh-notes-font-base) * 0.75);
-  line-height: 16px; font-weight: 600;
-  border-bottom: none;
-}
-
-/* ===== 讯息页（合并自 dsh-livefeed）：面板撑满 dock，去掉绝对定位 ===== */
-.dock-feed { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
-/* FeedPanel 根节点是「无 class 的包裹 div」——它才是 .dock-feed 的 flex 单元格；
-   必须让包裹 div 承担 flex 收缩，否则 .lf-panel 内部的高度约束全部失效（讯息页不滚动）。 */
-.dock-feed > div {
-  flex: 1; min-height: 0; display: flex; flex-direction: column;
-  min-width: 0; overflow: hidden;
-}
-.dock-feed .lf-panel {
-  position: static; width: 100%; max-width: none;
-  flex: 1; min-height: 0; height: auto;   /* 百分比高度在 flex 链中不如 flex 可靠，改用 flex 收缩 */
-  overflow: hidden;                        /* 防内容溢出 dock 边界 */
-  z-index: 0; border-left: none;
-}
-.dock-feed .lf-scroll { scrollbar-gutter: stable; }
-.dock-feed .lf-card { background: var(--dsw-alias-bg-layer-2); }
-.dock-feed .lf-card:hover { background: var(--dsw-alias-interactive-bg-hover-solid); }
 
 /* ===== 宽度拖拽手柄（右缘，竖直抓条） ===== */
 .dock-resize {
@@ -538,22 +493,18 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 
 
 /* ===== 悬浮迷你滚动条（dock 内所有滚动区）：仅滚动/悬停时显示，非必要隐藏 ===== */
-.dsh-notes-dock .np-list::-webkit-scrollbar,
-.dock-feed .lf-scroll::-webkit-scrollbar { width: 5px; }
-.dsh-notes-dock .np-list::-webkit-scrollbar-thumb,
-.dock-feed .lf-scroll::-webkit-scrollbar-thumb {
+.dsh-notes-dock .np-list::-webkit-scrollbar { width: 5px; }
+.dsh-notes-dock .np-list::-webkit-scrollbar-thumb {
   background: transparent;
   border-radius: 999px;
   border: 1px solid transparent;
   background-clip: content-box;
   transition: background 0.18s var(--ds-ease-in-out, ease);
 }
-.dsh-notes-dock .np-list.scr-on::-webkit-scrollbar-thumb,
-.dock-feed .lf-scroll.scr-on::-webkit-scrollbar-thumb {
+.dsh-notes-dock .np-list.scr-on::-webkit-scrollbar-thumb {
   background: var(--dsw-alias-scrollbar-bg-l1);
 }
-.dsh-notes-dock .np-list.scr-on::-webkit-scrollbar-thumb:hover,
-.dock-feed .lf-scroll.scr-on::-webkit-scrollbar-thumb:hover {
+.dsh-notes-dock .np-list.scr-on::-webkit-scrollbar-thumb:hover {
   background: var(--dsw-alias-scrollbar-hover-l1);
 }
 `
@@ -565,10 +516,7 @@ function scopeOf(data, tab) {
 function NotesDock(props) {
   const useWorkspaces = props.useWorkspaces
   const useSessions = props.useSessions
-  const pluginCtx = props.pluginCtx // 合并插件的客户端 ctx（timer 服务：ctx.interval）
-  // 页面页签：notes = 小计（默认）/ feed = 讯息（dsh-livefeed）
-  const [page, setPage] = useState('notes')
-  const [feedUnread, setFeedUnread] = useState(0) // 讯息未读数（页签角标；0 时不显示）
+
   // 当前工作区解析链（按可靠性排序）：
   //   1) 当前会话 id ∈ workspace.sessionIds（权威归属）
   //   2) 会话 cwd → 归一化路径匹配 workspace.path
@@ -786,46 +734,28 @@ function NotesDock(props) {
             const prevWidth = el0.style.width
             try {
               el0.style.width = 'max-content'
-              // 同时测量「小计」头部行与「讯息」头部行；当前页隐藏的行
-              // （display:none）矩形为 0，自动跳过 —— 只取当前页的最小宽度。
+              // 测量「小计」头部行；行自身也设 max-content —— flex 列子元素默认被父级
+              // 拉伸，长待办/长卡片会把竖栏 max-content 撑宽并连带拉伸行矩形，导致测量
+              // 拿到竖栏整体宽度（minW 爆炸 → 整栏被隐藏）。
               let full = 0          // 小计头部行最大完整宽
               let countFull = 0
-              let mxFeed = 0        // 讯息行最大完整宽（header / status / tabs）
-              let statusTextW = 0
-              for (const sel of ['.np-sec-head', '.lf-header', '.lf-status', '.lf-tabs']) {
-                const row = el0.querySelector(sel)
-                if (row === null) continue
-                // 关键：行自身也设 max-content —— flex 列子元素默认被父级拉伸，
-                // 长待办/长卡片会把竖栏 max-content 撑宽并连带拉伸行矩形，导致测量
-                // 拿到竖栏整体宽度（minW 爆炸 → 整栏被隐藏）。
+              const row = el0.querySelector('.np-sec-head')
+              if (row !== null) {
                 const prevRowW = row.style.width
                 row.style.width = 'max-content'
                 let w = 0
                 try { w = row.getBoundingClientRect().width } catch { w = 0 }
                 row.style.width = prevRowW
-                if (w <= 0) continue
-                if (sel === '.np-sec-head') {
-                  if (w > full) {
-                    full = w
-                    try {
-                      const c = row.querySelector('.np-sec-count')
-                      countFull = c !== null ? c.getBoundingClientRect().width : 0
-                    } catch { countFull = 0 }
-                  }
-                } else {
-                  if (w > mxFeed) mxFeed = w
-                  if (sel === '.lf-status') {
-                    try {
-                      const st = row.querySelector('.lf-status-text')
-                      const sw = st !== null ? st.getBoundingClientRect().width : 0
-                      if (sw > statusTextW) statusTextW = sw
-                    } catch { /* ignore */ }
-                  }
+                if (w > 0) {
+                  full = w
+                  try {
+                    const c = row.querySelector('.np-sec-count')
+                    countFull = c !== null ? c.getBoundingClientRect().width : 0
+                  } catch { countFull = 0 }
                 }
               }
               const notesMin = full > 0 ? Math.max(120, full - countFull + 40 + 16) : 0
-              const feedMin = mxFeed > 0 ? Math.max(160, mxFeed - statusTextW + 60 + 8) : 0
-              if (notesMin > 0 || feedMin > 0) minWRef.current = Math.max(notesMin, feedMin, 120)
+              if (notesMin > 0) minWRef.current = notesMin
             } catch { /* 测量失败回退默认 */ } finally {
               el0.style.width = prevWidth
             }
@@ -1090,7 +1020,7 @@ function NotesDock(props) {
     const onEnter = (event) => { event.currentTarget.classList.add('scr-on') }
     const onLeave = (event) => { event.currentTarget.classList.remove('scr-on') }
     const attach = () => {
-      for (const el of Array.from(root.querySelectorAll('.np-list, .lf-scroll'))) {
+      for (const el of Array.from(root.querySelectorAll('.np-list'))) {
         if (el.dataset.scrHooked === '1') continue
         el.dataset.scrHooked = '1'
         el.addEventListener('scroll', onScroll, { passive: true })
@@ -1100,7 +1030,7 @@ function NotesDock(props) {
     }
     attach()
     return () => {
-      for (const el of Array.from(root.querySelectorAll('.np-list, .lf-scroll'))) {
+      for (const el of Array.from(root.querySelectorAll('.np-list'))) {
         if (el.dataset.scrHooked !== '1') continue
         el.dataset.scrHooked = '0'
         el.removeEventListener('scroll', onScroll)
@@ -1504,43 +1434,12 @@ function NotesDock(props) {
     React.createElement(
       'div',
       { key: 'body', className: 'dock-body' },
-      /* ===== 页面页签：小计 / 讯息 ===== */
-      React.createElement(
-        'div',
-        { key: 'pagetabs', className: 'np-pagetabs' },
-        React.createElement(
-          'button',
-          {
-            key: 'p-note',
-            type: 'button',
-            className: 'np-pagetab' + (page === 'notes' ? ' active' : ''),
-            onClick: () => setPage('notes'),
-          },
-          '小计',
-        ),
-        React.createElement(
-          'button',
-          {
-            key: 'p-feed',
-            type: 'button',
-            className: 'np-pagetab' + (page === 'feed' ? ' active' : ''),
-            onClick: () => setPage('feed'),
-          },
-          '讯息',
-          feedUnread > 0 ? React.createElement(
-            'span',
-            { key: 'feed-unread', className: 'np-unread-badge' },
-            feedUnread > 99 ? '99+' : String(feedUnread),
-          ) : null,
-        ),
-      ),
-      /* ===== 小计（页面一：全局/工作区 tab + 待办 + 随记） ===== */
+      /* ===== 小计：全局/工作区 tab + 待办 + 随记 ===== */
       React.createElement(
         'section',
         {
           key: 'notes-section',
           className: 'np-section',
-          style: page === 'notes' ? undefined : { display: 'none' },
         },
         React.createElement('div', { className: 'np-tabs' }, ...tabs),
         error === null
@@ -1673,21 +1572,6 @@ function NotesDock(props) {
               ),
             ),
       ),
-      /* ===== 讯息（页面二：合并自 dsh-livefeed） ===== */
-      React.createElement(
-        'div',
-        {
-          key: 'dock-feed',
-          className: 'dock-feed',
-          style: page === 'feed' ? undefined : { display: 'none' },
-        },
-        React.createElement(FeedPanel, {
-          timerCtx: pluginCtx,
-          onState: (s) => setFeedUnread(
-            s && Array.isArray(s.cards) ? s.cards.filter((c) => !c.read).length : 0,
-          ),
-        }),
-      ),
     ),
     /* ===== 右缘宽度拖拽手柄 ===== */
     React.createElement('div', {
@@ -1705,7 +1589,7 @@ function NotesDock(props) {
 
 export default {
   name: 'notes-client',
-  inject: ['slots', 'timer'],
+  inject: ['slots'],
   apply(ctx) {
     ctx.effect(() => {
       if (typeof document === 'undefined') return
@@ -1713,13 +1597,13 @@ export default {
       const tag = document.createElement('style')
       tag.id = STYLE_TAG_ID
       tag.dataset.plugin = '@dsh-external/dsh-notes'
-      tag.textContent = DOCK_CSS + '\n' + FEED_CSS
+      tag.textContent = DOCK_CSS
       document.head.appendChild(tag)
       return () => { tag.remove() }
     })
     ctx.slots.inject('shell.overlay', () =>
       ctx.slots.register({ name: 'shell.overlay', id: 'notes-dock' }, (props) =>
-        React.createElement(NotesDock, Object.assign({}, props, { pluginCtx: ctx })),
+        React.createElement(NotesDock, props),
       ),
     )
   },

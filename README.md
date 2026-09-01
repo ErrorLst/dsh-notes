@@ -1,13 +1,10 @@
-# dsh-notes · 小记 + 实时讯息（合并 dsh-livefeed）
+# dsh-notes · 小记（小计）
 
-DSH（DeepSeek Harness）「小记」插件：常驻在侧栏与对话区之间的**全高竖栏**，顶部页签切换两个页面：
-
-- **小计**：持久化轻量笔记栏（**全局**与**工作区**两种作用域，待办 + 随记）
-- **讯息**：Linux Do 实时讯息面板（原 dsh-livefeed 全部能力：定时拉取、AI 价值筛选、未读/已读/设置）
+DSH（DeepSeek Harness）「小记」插件：常驻在侧栏与对话区之间的**全高竖栏**——**小计**持久化轻量笔记栏（**全局**与**工作区**两种作用域，待办 + 随记），右缘可拖拽调宽。
 
 所有配色基于 DSH 主题令牌（`--dsw-alias-*`），自动适配明暗主题。
 
-> 当前状态：**v0.6.0**——dsh-livefeed 已合并进本插件（Host 采集管线 + /api/dsh-livefeed + 客户端「讯息」页签 + 右缘宽度拖拽）；Host half 改动需重启 DSH 生效，客户端改动刷新即见。
+> 当前状态：**v0.7.0**——dsh-livefeed（「讯息」页签 / /api/dsh-livefeed / 未读角标）已移除，竖栏仅剩「小计」；Host half 改动需重启 DSH 生效，客户端改动刷新即见。
 
 ## 特性
 
@@ -22,12 +19,11 @@ DSH（DeepSeek Harness）「小记」插件：常驻在侧栏与对话区之间�
 - 💾 持久化：小计落盘 `~/.dsh/storages/notes.json`（存储域 `notes`，JSON 后端）；常驻会话走 DSH 原生会话日志
 - 🎨 主题适配：仅使用 DSH 语义令牌（`--dsw-alias-*`），明暗自动切换
 
-## v0.6.0 · 合并 dsh-livefeed
+## v0.7.0 · 移除 dsh-livefeed
 
-- 左侧全高竖栏顶部新增「小计 / 讯息」页签；「讯息」页在线保留原 livefeed 的面板（未读/已读、刷新/暂停/全部已读、面板设置）与轮询（5s）。
-- Host 采集管线原样并入（`src/livefeed-host.mjs`）：数据/配置目录不变（`~/.dsh/dsh-livefeed/`），HTTP API 仍为 `/api/dsh-livefeed`，已读/已采集去重历史不丢失。
-- 右缘宽度拖拽手柄：**200~640px**，localStorage 持久化（键 `dsh-notes.dockWidth`）；生效宽度 = min(拖拽宽, 与对话区可用留白)，不覆盖对话区；未拖拽过则沿用自动适配。
-- 插件组合：`@dsh-external/dsh-livefeed` 已从 profile 移除；该目录（`dsh-livefeed/`）保留原样（含构建脚本），需要时可随时重新启用。
+- 删除「讯息」页签/页、未读角标、`/api/dsh-livefeed` 与 5s 轮询（`src/client/livefeed.js`、`src/livefeed-host.mjs` 已删除）。
+- 竖栏仅剩「小计」（全局/工作区 todo + 随记）与右缘宽度拖拽；Host 注入服务精简为 `webServer`。
+- 数据目录 `~/.dsh/dsh-livefeed/`（config/state/history）原样保留；需要时用 git 历史中的旧版恢复采集能力即可。
 
 ## 快速开始
 
@@ -111,10 +107,8 @@ dsh web               # 重启 DSH 使其生效
 dsh-notes/
 ├── src/
 │   ├── index.mjs          # Host half：存储域 + HTTP API（小计）
-│   ├── livefeed-host.mjs  # Host half：dsh-livefeed 采集管线 + /api/dsh-livefeed（v0.6.0 合并）
 │   └── client/
-│       ├── index.ts       # 浏览器 half：全高竖栏（页签切换 小计 / 讯息 + 宽度拖拽）
-│       └── livefeed.js    # 讯息页组件 + 样式（合并自 dsh-livefeed/src/client/plugin.js）
+│       └── index.ts       # 浏览器 half：全高竖栏（小计 + 宽度拖拽）
 ├── prototype/index.html   # HTML 原型（样式基准）
 ├── docs/
 │   ├── design.md          # 设计文档（v0.4 融合版）
