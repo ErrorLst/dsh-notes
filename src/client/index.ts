@@ -702,7 +702,14 @@ function NotesDock(props) {
     // 即视为遮挡 → 隐藏；重叠消失（尺寸恢复/拖动后）自动显示。无滚动体（hero/无会话）不隐藏。
     // 关键：用已知几何（left/width 状态 + 帧左偏移）而非自身 getBoundingClientRect——
     // 隐藏态下自身矩形全 0，会与 visibility 双保险形成“隐藏→显示”反馈回路导致闪烁。
+    // 节流：updateCovered 内的 max-content 测量会强制定位(全页 reflow)两次，
+    // 对话视图重建时 MutationObserver 每帧都触发 → 主线程被布局卡死（fetch 回调
+    // 延迟数秒）。覆盖/宽度判定无需每帧精度：250ms 粒度足够（首拍立即执行）。
+    let lastCoveredAt = 0
     const updateCovered = () => {
+      const nowMs = performance.now()
+      if (nowMs - lastCoveredAt < 250) return
+      lastCoveredAt = nowMs
       let scroll = null
       try {
         scroll = center !== null ? center.querySelector('[data-conversation-scroll]') : null
