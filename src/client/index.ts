@@ -884,12 +884,18 @@ function NotesDock(props) {
   /* ---------- 小计数据加载（挂载 / 工作区切换 / 窗口聚焦） ---------- */
   useEffect(() => {
     let alive = true
+    const begin = performance.now()
+    console.debug('[dsh-notes] wsId change ->', workspaceId ? String(workspaceId).slice(0, 8) : 'none', '@', Math.round(begin))
     const load = () => {
+      const t0 = performance.now()
       const query = workspaceId !== undefined ? `?workspaceId=${encodeURIComponent(workspaceId)}` : ''
+      console.debug('[dsh-notes] fetch start', query || 'no-ws', '@', Math.round(t0))
       fetch(`/api/dsh-notes${query}`, { cache: 'no-store' })
         .then((response) => response.json())
         .then((result) => {
           if (!alive) return
+          console.debug('[dsh-notes] fetch resolved in', Math.round(performance.now() - t0), 'ms; ok=', result.ok,
+            result.ok ? 'ws todos=' + (result.workspace ? (result.workspace.todos?.length ?? 0) : 'null') : 'err=' + result.error)
           if (result.ok === true) {
             dataForRef.current = workspaceId ?? null
             setData({ global: result.global, workspace: result.workspace })
