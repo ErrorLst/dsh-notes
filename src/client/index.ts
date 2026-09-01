@@ -19,6 +19,20 @@ const React = require('react')
 const { useState, useEffect, useLayoutEffect, useRef, useCallback } = React
 
 const STYLE_TAG_ID = 'dsh-notes-dock-style'
+
+/* ---- 诊断（临时）：页面 longtask 监控：主线程任一任务 >50ms 即记录 ---- */
+if (typeof PerformanceObserver !== 'undefined') {
+  try {
+    const po = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        if (entry.duration >= 50) {
+          console.debug('[dsh-notes][longtask]', Math.round(entry.duration), 'ms @', Math.round(entry.startTime))
+        }
+      }
+    })
+    po.observe({ entryTypes: ['longtask'] })
+  } catch { /* ignore */ }
+}
 /* 自适应宽度（默认自动）：
    - 实际宽度 = min(手动拖拽宽, 可用留白 - WIDTH_GAP)；未拖拽过 = 可用留白 - WIDTH_GAP
    - 最小宽度动态计算（当前页头部行单行所需宽度），放不下才隐藏（迟滞防抖）
@@ -833,11 +847,14 @@ function NotesDock(props) {
       if (raf !== 0) return
       raf = requestAnimationFrame(() => {
         raf = 0
+        const t0 = performance.now()
         scrollEl = findScrollBody()
         updateLeft()
         updateTop()
         updateCovered()
         setViewIsChat(detectChatView())
+        const dt = performance.now() - t0
+        if (dt > 30) console.debug('[dsh-notes][frame]', Math.round(dt), 'ms')
       })
     }
     const onResize = scheduleUpdate
@@ -891,12 +908,18 @@ function NotesDock(props) {
   /* ---------- 小计数据加载（挂载 / 工作区切换 / 窗口聚焦） ---------- */
   useEffect(() => {
     let alive = true
+    const begin = performance.now()
+    console.debug('[dsh-notes] wsId change ->', workspaceId ? String(workspaceId).slice(0, 8) : 'none', '@', Math.round(begin))
     const load = () => {
+      const t0 = performance.now()
       const query = workspaceId !== undefined ? `?workspaceId=${encodeURIComponent(workspaceId)}` : ''
+      console.debug('[dsh-notes] fetch start', query || 'no-ws', '@', Math.round(t0))
       fetch(`/api/dsh-notes${query}`, { cache: 'no-store' })
         .then((response) => response.json())
         .then((result) => {
           if (!alive) return
+          console.debug('[dsh-notes] fetch resolved in', Math.round(performance.now() - t0), 'ms; ok=', result.ok,
+            result.ok ? 'ws todos=' + (result.workspace ? (result.workspace.todos?.length ?? 0) : 'null') : 'err=' + result.error)
           if (result.ok === true) {
             dataForRef.current = workspaceId ?? null
             setData({ global: result.global, workspace: result.workspace })
