@@ -1018,6 +1018,11 @@ function NotesDock(props) {
     const effectiveKey = tab === 'global' ? 'global' : `workspace:${dataForRef.current ?? ''}`
     const scope = tab === 'global' ? data.global : data.workspace
     if (scope === null) return
+    /* 输入中（聚焦）一律不回写：包括换键清空分支。
+       activeElement 判定放在最前，任何数据到达（防抖保存响应/后台刷新/
+       focus 重载/换键缓存渲染）都不得覆盖正在输入的草稿——否则服务端旧
+       memo 会在聚焦瞬间的竞态窗口回写，表现为「// 折叠成 /」。 */
+    if (memoTaRef.current !== null && document.activeElement === memoTaRef.current) return
     const keyChanged = boundKeyRef.current !== effectiveKey
     if (boundDataRef.current === data) {
       if (keyChanged) {
@@ -1030,7 +1035,6 @@ function NotesDock(props) {
       }
       return
     }
-    if (!keyChanged && memoTaRef.current !== null && document.activeElement === memoTaRef.current) return
     boundKeyRef.current = effectiveKey
     boundDataRef.current = data
     setMemoText(scope.memo)
