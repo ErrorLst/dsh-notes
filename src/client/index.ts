@@ -73,8 +73,13 @@ const DOCK_CSS = `
   border-right: 1px solid var(--dsw-alias-border-l1);
   z-index: 10;
   font-family: var(--dsw-font-family);
-  /* 字体随会话设置（ui-theme.fontSize）：12px 基准 + 会话 delta，1:1 跟随 */
+  /* 字体随会话设置（ui-theme.fontSize）：12px 基准 + 会话 delta，1:1 跟随。
+     次要文字档 --dsh-notes-font-base-secondary：rc.1 起官方提供二级字号级联
+     （--dsh-content-font-delta-secondary，低一档文本统一读它），竖栏内计数/
+     tab/tip/状态等次要文字改挂此档；旧宿主无该令牌时回退主 delta，行为同 0.7.12。
+     默认字号（14px）下二级 delta = 0，两档基准相同，视觉基线不变。 */
   --dsh-notes-font-base: calc(12px + var(--dsh-content-font-delta, 0px));
+  --dsh-notes-font-base-secondary: calc(12px + var(--dsh-content-font-delta-secondary, var(--dsh-content-font-delta, 0px)));
   font-size: calc(var(--dsh-notes-font-base) * 1);
   color: var(--dsw-alias-label-primary);
   box-sizing: border-box;
@@ -116,7 +121,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 .np-tab {
   padding: 3px 10px;
   border-radius: 999px;
-  font-size: calc(var(--dsh-notes-font-base) * 0.9583);
+  font-size: calc(var(--dsh-notes-font-base-secondary) * 0.9583);
   color: var(--dsw-alias-label-secondary);
   max-width: 160px;
   overflow: hidden;
@@ -133,7 +138,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   border-radius: 8px;
   background: var(--dsw-alias-interactive-bg-hover-danger);
   color: var(--dsw-alias-state-error-primary);
-  font-size: calc(var(--dsh-notes-font-base) * 0.9583);
+  font-size: calc(var(--dsh-notes-font-base-secondary) * 0.9583);
 }
 
 .np-sec-todo {
@@ -148,8 +153,8 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 .np-sec-title { flex-shrink: 0; }
 .np-clear { flex-shrink: 0; }
 .np-sec-count { flex-shrink: 1; min-width: 40px; overflow: hidden; text-overflow: ellipsis; }
-.np-sec-title { font-size: calc(var(--dsh-notes-font-base) * 0.875); font-weight: 600; letter-spacing: 0.04em; color: var(--dsw-alias-label-tertiary); }
-.np-sec-count { font-size: calc(var(--dsh-notes-font-base) * 0.875); color: var(--dsw-alias-label-tertiary); }
+.np-sec-title { font-size: calc(var(--dsh-notes-font-base-secondary) * 0.875); font-weight: 600; letter-spacing: 0.04em; color: var(--dsw-alias-label-tertiary); }
+.np-sec-count { font-size: calc(var(--dsh-notes-font-base-secondary) * 0.875); color: var(--dsw-alias-label-tertiary); }
 /* 待办内容卡片：与随记卡片同款（边框/圆角/间距），内部输入与列表无边框 */
 .np-todo-card {
   flex: 1; min-height: 0; display: flex; flex-direction: column;
@@ -373,7 +378,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   overflow-anchor: none; /* 关闭滚动锚定：重渲染/内容变化不触发滚动位置漂移 */
 }
 .np-detail-field { display: flex; flex-direction: column; gap: 3px; }
-.np-detail-field label { font-size: calc(var(--dsh-notes-font-base) * 0.9167); color: var(--dsw-alias-label-tertiary); }
+.np-detail-field label { font-size: calc(var(--dsh-notes-font-base-secondary) * 0.9167); color: var(--dsw-alias-label-tertiary); }
 .np-detail-title {
   height: 30px;
   padding: 0 8px;
@@ -407,10 +412,10 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 10px;
-  font-size: calc(var(--dsh-notes-font-base) * 0.875);
+  font-size: calc(var(--dsh-notes-font-base-secondary) * 0.875);
   color: var(--dsw-alias-label-tertiary);
 }
-.np-detail-status { font-size: calc(var(--dsh-notes-font-base) * 0.875); color: var(--dsw-alias-label-tertiary); }
+.np-detail-status { font-size: calc(var(--dsh-notes-font-base-secondary) * 0.875); color: var(--dsw-alias-label-tertiary); }
 /* 待办空态：图标 + 引导文案 */
 .np-empty {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -425,7 +430,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 }
 .np-empty-icon svg { width: 15px; height: 15px; }
 .np-empty p { margin: 0; font-size: calc(var(--dsh-notes-font-base) * 1); color: var(--dsw-alias-label-secondary); }
-.np-empty .sub { font-size: calc(var(--dsh-notes-font-base) * 0.875); color: var(--dsw-alias-label-tertiary); }
+.np-empty .sub { font-size: calc(var(--dsh-notes-font-base-secondary) * 0.875); color: var(--dsw-alias-label-tertiary); }
 
 /* 列表滚动条（与 DSH 视觉一致） */
 .np-list::-webkit-scrollbar { width: 8px; }
@@ -442,12 +447,12 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   background: var(--dsw-alias-bg-overlay);
   border: 1px solid var(--dsw-alias-border-l2);
   box-shadow: var(--dsh-notes-shadow);
-  font-size: calc(var(--dsh-notes-font-base) * 0.9583);
+  font-size: calc(var(--dsh-notes-font-base-secondary) * 0.9583);
   color: var(--dsw-alias-label-secondary);
 }
 .np-undo button {
   margin-left: auto;
-  font-size: calc(var(--dsh-notes-font-base) * 0.9583);
+  font-size: calc(var(--dsh-notes-font-base-secondary) * 0.9583);
   font-weight: 500;
   color: var(--dsw-alias-brand-primary);
   padding: 2px 6px;
@@ -464,7 +469,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   background: var(--dsw-alias-bg-overlay);
   border: 1px solid var(--dsw-alias-border-l2);
   box-shadow: var(--dsh-notes-shadow);
-  font-size: calc(var(--dsh-notes-font-base) * 0.9167);
+  font-size: calc(var(--dsh-notes-font-base-secondary) * 0.9167);
   line-height: 1.4;
   color: var(--dsw-alias-label-primary);
   white-space: nowrap;
@@ -479,7 +484,7 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   flex: 1 1 45%;
   border-top: 1px solid var(--dsw-alias-border-l1);
 }
-.np-memo-status { font-size: calc(var(--dsh-notes-font-base) * 0.875); color: var(--dsw-alias-label-tertiary); margin-left: auto; }
+.np-memo-status { font-size: calc(var(--dsh-notes-font-base-secondary) * 0.875); color: var(--dsw-alias-label-tertiary); margin-left: auto; }
 .np-memo {
   flex: 1;
   min-height: 56px;
