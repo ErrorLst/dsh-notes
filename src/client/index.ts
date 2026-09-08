@@ -519,44 +519,44 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 
 
 /* ===== 悬浮迷你滚动条（dock 内所有滚动区）：仅滚动/悬停时显示，非必要隐藏 =====
-   随记 textarea 与详情卡片一并纳入：Windows 上系统默认滚动条要占 15~17px，
-   竖栏只有 280px 宽，正文会被生生吃掉一截；统一换成 5px 细条（与待办列表同款）。
-   scrollbar-gutter: stable 让这 5px 恒定预留——内容从「不溢出」变为「溢出」时
+   随记 textarea 与详情卡片一并纳入：Windows 默认滚动条是 15~17px 的实心宽条，
+   连轨道一起吃掉正文宽度；这里统一换成 6px 细轨道 + 内缩 1px 的 4px 圆头胶囊，
+   与宿主 ui-tool 卡片内滚动区同一套做法（padding-box 裁切 + 透明边内缩），
+   拇指不贴圆角边缘，也不会因 .scr-on 切换而变宽。
+   scrollbar-gutter: stable 让这 6px 恒定预留：内容从「不溢出」变为「溢出」时
    正文不再横向重排（否则每跨过一次阈值都抖一下）。 */
-.dsh-notes-dock .np-list,
-.dsh-notes-dock .np-memo,
-.dsh-notes-dock .np-detail-body,
-.dsh-notes-dock .np-detail-textarea {
+.dsh-notes-dock :is(.np-list, .np-memo, .np-detail-body, .np-detail-textarea) {
   scrollbar-gutter: stable;
 }
-.dsh-notes-dock .np-list::-webkit-scrollbar,
-.dsh-notes-dock .np-memo::-webkit-scrollbar,
-.dsh-notes-dock .np-detail-body::-webkit-scrollbar,
-.dsh-notes-dock .np-detail-textarea::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-}
-.dsh-notes-dock .np-list::-webkit-scrollbar-thumb,
-.dsh-notes-dock .np-memo::-webkit-scrollbar-thumb,
-.dsh-notes-dock .np-detail-body::-webkit-scrollbar-thumb,
-.dsh-notes-dock .np-detail-textarea::-webkit-scrollbar-thumb {
+.dsh-notes-dock :is(.np-list, .np-memo, .np-detail-body, .np-detail-textarea)::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
   background: transparent;
-  border-radius: 999px;
+}
+/* 轨道与角落一律透明：细条只在拇指处显形，不画底 */
+.dsh-notes-dock :is(.np-list, .np-memo, .np-detail-body, .np-detail-textarea)::-webkit-scrollbar-track {
+  background: transparent;
+  /* 拇指行程两端各留 3px，避开 8px 圆角——否则胶囊两端会被圆角切掉 */
+  margin: 3px 0;
+}
+.dsh-notes-dock :is(.np-list, .np-memo, .np-detail-body, .np-detail-textarea)::-webkit-scrollbar-corner {
+  background: transparent;
+}
+/* 拇指：1px 透明边 + padding-box 裁切 = 距轨道两侧各 1px 的 4px 圆头胶囊。
+   只改 background-color（不用 background 简写，避免把裁切重置回 border-box
+   导致显形瞬间变宽）。 */
+.dsh-notes-dock :is(.np-list, .np-memo, .np-detail-body, .np-detail-textarea)::-webkit-scrollbar-thumb {
+  background-color: transparent;
   border: 1px solid transparent;
-  background-clip: content-box;
-  transition: background 0.18s var(--ds-ease-in-out, ease);
+  background-clip: padding-box;
+  border-radius: 999px;
+  transition: background-color 0.18s var(--ds-ease-in-out, ease);
 }
-.dsh-notes-dock .np-list.scr-on::-webkit-scrollbar-thumb,
-.dsh-notes-dock .np-memo.scr-on::-webkit-scrollbar-thumb,
-.dsh-notes-dock .np-detail-body.scr-on::-webkit-scrollbar-thumb,
-.dsh-notes-dock .np-detail-textarea.scr-on::-webkit-scrollbar-thumb {
-  background: var(--dsw-alias-scrollbar-bg-l1);
+.dsh-notes-dock :is(.np-list, .np-memo, .np-detail-body, .np-detail-textarea).scr-on::-webkit-scrollbar-thumb {
+  background-color: var(--dsw-alias-scrollbar-bg-l1);
 }
-.dsh-notes-dock .np-list.scr-on::-webkit-scrollbar-thumb:hover,
-.dsh-notes-dock .np-memo.scr-on::-webkit-scrollbar-thumb:hover,
-.dsh-notes-dock .np-detail-body.scr-on::-webkit-scrollbar-thumb:hover,
-.dsh-notes-dock .np-detail-textarea.scr-on::-webkit-scrollbar-thumb:hover {
-  background: var(--dsw-alias-scrollbar-hover-l1);
+.dsh-notes-dock :is(.np-list, .np-memo, .np-detail-body, .np-detail-textarea).scr-on::-webkit-scrollbar-thumb:hover {
+  background-color: var(--dsw-alias-scrollbar-hover-l1);
 }
 `
 
