@@ -1529,7 +1529,7 @@ function NotesDock(props) {
     'div',
     {
       className: 'dsh-notes-dock' + (viewIsChat ? '' : ' view-hidden') + (covered ? ' covered-hidden' : ''),
-      'data-notes-ver': '7a14c0',
+      'data-notes-ver': '7b15c0',
       ref: (node) => {
         rootRef.current = node
         dockRef.current = node
