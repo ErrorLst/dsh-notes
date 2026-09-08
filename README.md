@@ -4,7 +4,7 @@ DSH（DeepSeek Harness）「小记」插件：常驻在侧栏与对话区之间�
 
 所有配色基于 DSH 主题令牌（`--dsw-alias-*`），自动适配明暗主题。
 
-> 当前状态：**v0.7.0**——dsh-livefeed（「讯息」页签 / /api/dsh-livefeed / 未读角标）已移除，竖栏仅剩「小计」；Host half 改动需重启 DSH 生效，客户端改动刷新即见。
+> 当前状态：**v0.7.14**——dsh-livefeed（「讯息」页签 / /api/dsh-livefeed / 未读角标）已移除，竖栏仅剩「小计」；Host half 改动需重启 DSH 生效，客户端改动刷新即见。
 
 ## 特性
 
@@ -24,6 +24,18 @@ DSH（DeepSeek Harness）「小记」插件：常驻在侧栏与对话区之间�
 - 删除「讯息」页签/页、未读角标、`/api/dsh-livefeed` 与 5s 轮询（`src/client/livefeed.js`、`src/livefeed-host.mjs` 已删除）。
 - 竖栏仅剩「小计」（全局/工作区 todo + 随记）与右缘宽度拖拽；Host 注入服务精简为 `webServer`。
 - 数据目录 `~/.dsh/dsh-livefeed/`（config/state/history）原样保留；需要时用 git 历史中的旧版恢复采集能力即可。
+
+## v0.7.14 · 随记滚动条与「自动滚回顶部」修复
+
+- **随记 / 详情卡片的滚动条改为 5px 悬浮细条**（与待办列表同款）：Windows 系统默认
+  滚动条要占 15~17px，280px 宽的竖栏里正文被生生吃掉一截；现在统一 5px，且只在
+  滚动 / 悬停时显形。`scrollbar-gutter: stable` 恒定预留这 5px，内容跨过「溢出」
+  阈值时正文不再横向重排。
+- **修复随记每隔一会儿自动滚回顶部**：竖栏尺寸自适原先会把竖栏自身临时设为
+  `max-content` 测宽（长待办可撑到上千 px），随记 textarea 随之瞬时变宽、正文重排到
+  一屏塞得下 → 浏览器把 `scrollTop` 夹到 0，恢复宽度后不再回来（1.5s 轮询 + 各类
+  DOM 变化都会触发）。现在只把「小计」头部行设为 `max-content` 测量，测量结果不变，
+  竖栏宽度全程不动。
 
 ## 快速开始
 

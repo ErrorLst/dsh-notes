@@ -432,10 +432,6 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 .np-empty p { margin: 0; font-size: calc(var(--dsh-notes-font-base) * 1); color: var(--dsw-alias-label-secondary); }
 .np-empty .sub { font-size: calc(var(--dsh-notes-font-base-secondary) * 0.875); color: var(--dsw-alias-label-tertiary); }
 
-/* 列表滚动条（与 DSH 视觉一致） */
-.np-list::-webkit-scrollbar { width: 8px; }
-.np-list::-webkit-scrollbar-thumb { background: var(--dsw-alias-scrollbar-bg-l1); border-radius: 4px; }
-
 .np-undo {
   display: flex;
   align-items: center;
@@ -522,19 +518,44 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 .dock-resize:hover::after, .dock-resize:active::after { background: var(--dsw-alias-state-business-primary); opacity: .8; }
 
 
-/* ===== 悬浮迷你滚动条（dock 内所有滚动区）：仅滚动/悬停时显示，非必要隐藏 ===== */
-.dsh-notes-dock .np-list::-webkit-scrollbar { width: 5px; }
-.dsh-notes-dock .np-list::-webkit-scrollbar-thumb {
+/* ===== 悬浮迷你滚动条（dock 内所有滚动区）：仅滚动/悬停时显示，非必要隐藏 =====
+   随记 textarea 与详情卡片一并纳入：Windows 上系统默认滚动条要占 15~17px，
+   竖栏只有 280px 宽，正文会被生生吃掉一截；统一换成 5px 细条（与待办列表同款）。
+   scrollbar-gutter: stable 让这 5px 恒定预留——内容从「不溢出」变为「溢出」时
+   正文不再横向重排（否则每跨过一次阈值都抖一下）。 */
+.dsh-notes-dock .np-list,
+.dsh-notes-dock .np-memo,
+.dsh-notes-dock .np-detail-body,
+.dsh-notes-dock .np-detail-textarea {
+  scrollbar-gutter: stable;
+}
+.dsh-notes-dock .np-list::-webkit-scrollbar,
+.dsh-notes-dock .np-memo::-webkit-scrollbar,
+.dsh-notes-dock .np-detail-body::-webkit-scrollbar,
+.dsh-notes-dock .np-detail-textarea::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.dsh-notes-dock .np-list::-webkit-scrollbar-thumb,
+.dsh-notes-dock .np-memo::-webkit-scrollbar-thumb,
+.dsh-notes-dock .np-detail-body::-webkit-scrollbar-thumb,
+.dsh-notes-dock .np-detail-textarea::-webkit-scrollbar-thumb {
   background: transparent;
   border-radius: 999px;
   border: 1px solid transparent;
   background-clip: content-box;
   transition: background 0.18s var(--ds-ease-in-out, ease);
 }
-.dsh-notes-dock .np-list.scr-on::-webkit-scrollbar-thumb {
+.dsh-notes-dock .np-list.scr-on::-webkit-scrollbar-thumb,
+.dsh-notes-dock .np-memo.scr-on::-webkit-scrollbar-thumb,
+.dsh-notes-dock .np-detail-body.scr-on::-webkit-scrollbar-thumb,
+.dsh-notes-dock .np-detail-textarea.scr-on::-webkit-scrollbar-thumb {
   background: var(--dsw-alias-scrollbar-bg-l1);
 }
-.dsh-notes-dock .np-list.scr-on::-webkit-scrollbar-thumb:hover {
+.dsh-notes-dock .np-list.scr-on::-webkit-scrollbar-thumb:hover,
+.dsh-notes-dock .np-memo.scr-on::-webkit-scrollbar-thumb:hover,
+.dsh-notes-dock .np-detail-body.scr-on::-webkit-scrollbar-thumb:hover,
+.dsh-notes-dock .np-detail-textarea.scr-on::-webkit-scrollbar-thumb:hover {
   background: var(--dsw-alias-scrollbar-hover-l1);
 }
 `
@@ -735,9 +756,10 @@ function NotesDock(props) {
     // 即视为遮挡 → 隐藏；重叠消失（尺寸恢复/拖动后）自动显示。无滚动体（hero/无会话）不隐藏。
     // 关键：用已知几何（left/width 状态 + 帧左偏移）而非自身 getBoundingClientRect——
     // 隐藏态下自身矩形全 0，会与 visibility 双保险形成“隐藏→显示”反馈回路导致闪烁。
-    // 节流：updateCovered 内的 max-content 测量会强制定位(全页 reflow)两次，
-    // 对话视图重建时 MutationObserver 每帧都触发 → 主线程被布局卡死（fetch 回调
-    // 延迟数秒）。覆盖/宽度判定无需每帧精度：250ms 粒度足够（首拍立即执行）。
+    // 节流：updateCovered 每拍都要读多处几何（frame / 消息列 / 头部行测量），
+    // 每次读取都是一次强制同步布局；对话视图重建时 MutationObserver 每帧都触发 →
+    // 主线程被布局卡死（fetch 回调延迟数秒）。覆盖/宽度判定无需每帧精度：
+    // 250ms 粒度足够（首拍立即执行）。
     let lastCoveredAt = 0
     const updateCovered = () => {
       const nowMs = performance.now()
@@ -750,8 +772,9 @@ function NotesDock(props) {
       let next = false
       let content = null
       let minW = WIDTH_DEFAULT
-      // 详情卡片打开期间：竖栏（含卡片）若被瞬时置为 max-content 测量，描述区会重新排版、
-      // 滚动高度骤变 → 无输入也会把滚动条顶回（1.5s 轮询 + 各类 DOM 变化都会触发）。此时跳过测量并冻结宽度。
+      // 详情卡片打开期间冻结宽度（跳过测量与 setEffWidth）：编辑中竖栏宽度变化会让
+      // 卡片内的描述框重新排版，滚动位置与光标视图都会漂移。测量本身已不再改动竖栏
+      // 宽度（见下），这里保留冻结纯为「编辑期间布局不动」。
       const cardOpen = detailDraftRef.current !== null
       if (scroll !== null) {
         const frameLeft = frame.getBoundingClientRect().left
@@ -765,40 +788,39 @@ function NotesDock(props) {
         if (content !== null) {
           const gap = content.left - aLeft
           const fit = Math.max(0, gap - WIDTH_GAP)
-          // 最小宽度动态、确定性测量：把竖栏临时设为 max-content，读头部行全宽
+          // 最小宽度动态、确定性测量：只把「小计」头部行临时设为 max-content 读全宽
           // （计数按完整文本），再减去计数全宽、置换为计数下限 40px + 内边距 16px。
           // 结果 = 标题+按钮+计数下限，不随当前渲染宽度自引用；超窄时计数
           // 显示省略号（CSS），行文不折行。
+          // 关键：绝不把竖栏自身改成 max-content。竖栏一旦被撑到 max-content
+          // （长待办/长文本可达上千 px），随记 textarea 会瞬时变宽、正文重排到
+          // 整段塞得下 → 滚动高度骤降到视口以内 → 浏览器把 scrollTop 夹到 0；
+          // 恢复宽度后滚动位置不会回来。1.5s 轮询 + 各类 DOM 变化都会触发，
+          // 用户看到的就是「随记每隔一会儿自动滚回顶部」（待办列表同理会漂移）。
+          // 行自身的 max-content 不受父级宽度影响，测量结果与旧写法完全一致。
           const el0 = rootRef.current
           if (el0 !== null && !cardOpen) {
-            const prevWidth = el0.style.width
-            try {
-              el0.style.width = 'max-content'
-              // 测量「小计」头部行；行自身也设 max-content —— flex 列子元素默认被父级
-              // 拉伸，长待办/长卡片会把竖栏 max-content 撑宽并连带拉伸行矩形，导致测量
-              // 拿到竖栏整体宽度（minW 爆炸 → 整栏被隐藏）。
-              let full = 0          // 小计头部行最大完整宽
-              let countFull = 0
-              const row = el0.querySelector('.np-sec-head')
-              if (row !== null) {
-                const prevRowW = row.style.width
+            let full = 0            // 小计头部行最大完整宽
+            let countFull = 0       // 计数最大完整宽（必须在行仍为 max-content 时读，
+                                    // 否则行已被压回真实宽度、计数可能被省略号截断）
+            const row = el0.querySelector('.np-sec-head')
+            if (row !== null) {
+              const prevRowW = row.style.width
+              try {
                 row.style.width = 'max-content'
-                let w = 0
-                try { w = row.getBoundingClientRect().width } catch { w = 0 }
-                row.style.width = prevRowW
-                if (w > 0) {
-                  full = w
+                try { full = row.getBoundingClientRect().width } catch { full = 0 }
+                if (full > 0) {
                   try {
                     const c = row.querySelector('.np-sec-count')
                     countFull = c !== null ? c.getBoundingClientRect().width : 0
                   } catch { countFull = 0 }
                 }
+              } catch { /* 测量失败回退默认 */ } finally {
+                row.style.width = prevRowW
               }
-              const notesMin = full > 0 ? Math.max(120, full - countFull + 40 + 16) : 0
-              if (notesMin > 0) minWRef.current = notesMin
-            } catch { /* 测量失败回退默认 */ } finally {
-              el0.style.width = prevWidth
             }
+            const notesMin = full > 0 ? Math.max(120, full - countFull + 40 + 16) : 0
+            if (notesMin > 0) minWRef.current = notesMin
           }
           if (minWRef.current > 0) minW = minWRef.current
           const manual = dragWidthRef.current
@@ -1083,10 +1105,13 @@ function NotesDock(props) {
     hideTip()
   }
 
-  /* ---------- 悬浮滚动条：滚动/悬停时显示，1.5s 无操作后隐藏 ---------- */
+  /* ---------- 悬浮滚动条：滚动/悬停时显示，1.5s 无操作后隐藏 ----------
+     覆盖 dock 内所有滚动区（待办列表 / 随记 textarea / 详情卡片正文与描述框）。
+     详情卡片的滚动区是打开时才挂载的，用 childList 观察器补挂，避免漏挂。 */
   useEffect(() => {
     const root = rootRef.current
     if (root === null) return
+    const SCROLLERS = '.np-list, .np-memo, .np-detail-body, .np-detail-textarea'
     const timers = new Map()
     const onScroll = (event) => {
       const el = event.currentTarget
@@ -1098,7 +1123,7 @@ function NotesDock(props) {
     const onEnter = (event) => { event.currentTarget.classList.add('scr-on') }
     const onLeave = (event) => { event.currentTarget.classList.remove('scr-on') }
     const attach = () => {
-      for (const el of Array.from(root.querySelectorAll('.np-list'))) {
+      for (const el of Array.from(root.querySelectorAll(SCROLLERS))) {
         if (el.dataset.scrHooked === '1') continue
         el.dataset.scrHooked = '1'
         el.addEventListener('scroll', onScroll, { passive: true })
@@ -1107,8 +1132,14 @@ function NotesDock(props) {
       }
     }
     attach()
+    let observer = null
+    if (typeof MutationObserver !== 'undefined') {
+      observer = new MutationObserver(attach)
+      observer.observe(root, { childList: true, subtree: true })
+    }
     return () => {
-      for (const el of Array.from(root.querySelectorAll('.np-list'))) {
+      if (observer !== null) observer.disconnect()
+      for (const el of Array.from(root.querySelectorAll(SCROLLERS))) {
         if (el.dataset.scrHooked !== '1') continue
         el.dataset.scrHooked = '0'
         el.removeEventListener('scroll', onScroll)
@@ -1498,7 +1529,7 @@ function NotesDock(props) {
     'div',
     {
       className: 'dsh-notes-dock' + (viewIsChat ? '' : ' view-hidden') + (covered ? ' covered-hidden' : ''),
-      'data-notes-ver': '312d80',
+      'data-notes-ver': '7a14c0',
       ref: (node) => {
         rootRef.current = node
         dockRef.current = node
