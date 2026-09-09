@@ -4,7 +4,7 @@ DSH（DeepSeek Harness）「小记」插件：常驻在侧栏与对话区之间�
 
 所有配色基于 DSH 主题令牌（`--dsw-alias-*`），自动适配明暗主题。
 
-> 当前状态：**v0.7.15**——dsh-livefeed（「讯息」页签 / /api/dsh-livefeed / 未读角标）已移除，竖栏仅剩「小计」；Host half 改动需重启 DSH 生效，客户端改动刷新即见。
+> 当前状态：**v0.7.16**——适配 dsh 0.1.5-alpha.1（官方右侧栏）；dsh-livefeed（「讯息」页签 / /api/dsh-livefeed / 未读角标）已移除，竖栏仅剩「小计」；Host half 改动需重启 DSH 生效，客户端改动刷新即见。
 
 ## 特性
 
@@ -24,6 +24,19 @@ DSH（DeepSeek Harness）「小记」插件：常驻在侧栏与对话区之间�
 - 删除「讯息」页签/页、未读角标、`/api/dsh-livefeed` 与 5s 轮询（`src/client/livefeed.js`、`src/livefeed-host.mjs` 已删除）。
 - 竖栏仅剩「小计」（全局/工作区 todo + 随记）与右缘宽度拖拽；Host 注入服务精简为 `webServer`。
 - 数据目录 `~/.dsh/dsh-livefeed/`（config/state/history）原样保留；需要时用 git 历史中的旧版恢复采集能力即可。
+
+## v0.7.16 · 适配 dsh 0.1.5-alpha.1（官方右侧栏）
+
+- **官方右侧栏全屏时暂停测量**：dsh 0.1.5 的 ui-sidebar-right 全屏面板是
+  `position: fixed; inset: 0; z-index: 40`，盖在整个 `shell.overlay`（z-index 20）之上，
+  竖栏此时不可见；此前仍按 1.5s 轮询 + MutationObserver + ResizeObserver 做强制布局。
+  现在 frame 带 `data-rightbar-fullscreen` 时跳过测量，退出全屏由新增的
+  attributeFilter 触发一次补测（正常态右侧栏 push 时行为不变：中栏变窄 → 消息列
+  左缘右移 → 竖栏按既有规则自动隐藏/让位）。
+- **滚动条颜色改走官方间接层**：`--dsh-scrollbar-thumb` / `--dsh-scrollbar-thumb-hover`
+  （旧 `--dsw-alias-scrollbar-*` 作 fallback），高层级表面可自行 rebind 成 l2 档。
+- **删掉失效的 `[class*="scrollBody"]` 兜底**：CSS Module 哈希类名随版本变化，
+  只保留官方稳定属性 `[data-conversation-scroll]`。
 
 ## v0.7.15 · 随记滚动条与「自动滚回顶部」修复
 

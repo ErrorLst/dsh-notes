@@ -544,7 +544,8 @@ body[data-ds-dark-theme] .dsh-notes-dock {
 }
 /* 拇指：1px 透明边 + padding-box 裁切 = 距轨道两侧各 1px 的 4px 圆头胶囊。
    只改 background-color（不用 background 简写，避免把裁切重置回 border-box
-   导致显形瞬间变宽）。 */
+   导致显形瞬间变宽）。颜色走 ui-theme 的官方间接层 --dsh-scrollbar-thumb
+   （高层级表面可自行 rebind 成 l2），旧 token 作 fallback。 */
 .dsh-notes-dock :is(.np-list, .np-memo, .np-detail-body, .np-detail-textarea)::-webkit-scrollbar-thumb {
   background-color: transparent;
   border: 1px solid transparent;
@@ -553,10 +554,10 @@ body[data-ds-dark-theme] .dsh-notes-dock {
   transition: background-color 0.18s var(--ds-ease-in-out, ease);
 }
 .dsh-notes-dock :is(.np-list, .np-memo, .np-detail-body, .np-detail-textarea).scr-on::-webkit-scrollbar-thumb {
-  background-color: var(--dsw-alias-scrollbar-bg-l1);
+  background-color: var(--dsh-scrollbar-thumb, var(--dsw-alias-scrollbar-bg-l1));
 }
 .dsh-notes-dock :is(.np-list, .np-memo, .np-detail-body, .np-detail-textarea).scr-on::-webkit-scrollbar-thumb:hover {
-  background-color: var(--dsw-alias-scrollbar-hover-l1);
+  background-color: var(--dsh-scrollbar-thumb-hover, var(--dsw-alias-scrollbar-hover-l1));
 }
 `
 
@@ -731,11 +732,9 @@ function NotesDock(props) {
     const findScrollBody = () => {
       if (center === null) return null
       try {
-        // 稳定属性优先（CSS module hash 类名可能随版本变化）
-        const hit = center.querySelector('[data-conversation-scroll]')
-        if (hit !== null) return hit
-        const byClass = center.querySelector('[class*="scrollBody"]')
-        if (byClass !== null) return byClass
+        // 只用官方稳定属性：CSS module 类名（scrollBody 的哈希）随版本变化，
+        // 旧兜底在 0.1.5 已失效且可能命中错误节点。
+        return center.querySelector('[data-conversation-scroll]')
       } catch { /* ignore */ }
       return null
     }
@@ -883,8 +882,13 @@ function NotesDock(props) {
     updateTop()
     updateCovered()
     setViewIsChat(detectChatView())
+    // 官方右侧栏全屏时它自己的面板（z-index 40）盖住整个 overlay 层，竖栏不可见；
+    // 此期间跳过测量：几何已无意义，而 1.5s 轮询 + 两个 observer 仍在做强制布局。
+    // data-rightbar-fullscreen 已加入 frame 的 attributeFilter，退出全屏会补一次更新。
+    const suppressed = () => frame.hasAttribute('data-rightbar-fullscreen')
     let raf = 0
     const scheduleUpdate = () => {
+      if (suppressed()) return
       if (raf !== 0) return
       raf = requestAnimationFrame(() => {
         raf = 0
@@ -911,7 +915,7 @@ function NotesDock(props) {
       }
       if (relevant) scheduleUpdate()
     })
-    observer.observe(frame, { attributes: true, attributeFilter: ['style', 'data-sidebar-collapsed'], childList: true })
+    observer.observe(frame, { attributes: true, attributeFilter: ['style', 'data-sidebar-collapsed', 'data-rightbar-fullscreen'], childList: true })
     if (center !== null) {
       // class/data-phase 用于会话头部显隐（wSkVaW_headerHidden / root data-phase），
       // tab 切换（aria-selected）必须触发视图重检。
@@ -1529,7 +1533,7 @@ function NotesDock(props) {
     'div',
     {
       className: 'dsh-notes-dock' + (viewIsChat ? '' : ' view-hidden') + (covered ? ' covered-hidden' : ''),
-      'data-notes-ver': '7b15c0',
+      'data-notes-ver': '7c16a0',
       ref: (node) => {
         rootRef.current = node
         dockRef.current = node
