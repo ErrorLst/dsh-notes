@@ -81,7 +81,7 @@ dsh-notes 在 DSH Web 界面中提供**侧栏与对话区之间的常驻竖栏**
 
 1. **不注册模型工具**：不调用 `harness.defineTool` / `tools.register`，模型工具目录中不存在任何 notes 工具。
 2. **不进提示词**：不注册 `systemPrompt` section / context / 变量，**小计内容永不进入任何模型上下文**（包括常驻会话的请求）。
-3. **物理双通道**：小计数据只写入独立存储域文件 `~/.dsh/storages/notes.json`；常驻会话与普通会话一样写 `~/.dsh/sessions/<cwd>/<sessionId>/session.jsonl.zstd`（追加式 zstd JSONL）。**两条通道互不相交**：小计内容不会被折叠进常驻会话 transcript，常驻会话内容也不会写进 notes.json（详见 §3.6）。
+3. **物理双通道**：小计数据只写入独立存储域文件 `~/.dsh/storages/notes.json`；常驻会话与普通会话一样写 `~/.dsh/sessions/<projectKey(cwd)>/<encodeSegment(sessionId)>/session.v3.jsonl.zstd`（追加式 zstd JSONL；目录名是**编码后的安全段**，不是原始 cwd / sessionId，见 §3.6）。**两条通道互不相交**：小计内容不会被折叠进常驻会话 transcript，常驻会话内容也不会写进 notes.json（详见 §3.6）。
 4. **不注册 Remote 服务**：Host API 是普通 HTTP 路由（`webServer.register`，`/api/dsh-notes`），仅浏览器同源 `fetch` 调用；不经 typert gateway / api-remotes 暴露。
 5. **键只是字符串**：工作区小计仅以 `workspaceId` 字符串为键；常驻会话仅以 sessionId 字符串为键，互不引用。
 6. **无鉴权面**：HTTP API 无登录/密钥，仅依赖 DSH Web 本机绑定（默认 `127.0.0.1:3080`），部署层网络边界即访问边界。
@@ -148,11 +148,12 @@ const title       = useWorkspaces((s) => s.items.find((w) => w.workspaceId === w
 
 | | 小计（本插件） | 常驻会话 / 普通对话（DSH 原生） |
 | --- | --- | --- |
-| 位置 | `~/.dsh/storages/notes.json` | `~/.dsh/sessions/<cwd 编码>/<sessionId>/session.jsonl.zstd` |
+| 位置 | `~/.dsh/storages/notes.json` | `~/.dsh/sessions/<projectKey(cwd)>/<encodeSegment(sessionId)>/session.v3.jsonl.zstd` |
 | 后端 | storage-domain（JSON 后端） | session-persistence-jsonl（追加式 JSONL，zstd） |
 | 格式 | 人类可读 JSON（整文件快照） | 追加式 JSONL |
 | 写入 | 原子整文件替换 + 域写链 | append-only 事件 |
 
+- **路径与代次（v0.7.17 更正；**已废止的旧写法**：原文档写作 `~/.dsh/sessions/<cwd>/<sessionId>/session.jsonl.zstd`，**切勿照抄**）**：会话根 `<root>` = `dshHomePath('sessions')`（默认 `~/.dsh/sessions`）；项目目录名 = `projectKey(cwd)`——分隔符 `/` / `\` / `:` 的连续段折成一个 `-`，不安全码元按 UTF-16 码元转义为 `~XXXX`，去掉前导 `-` 后两侧补 `--`，并以 251 字符截断（无 cwd 的会话用 `_no-cwd`）；会话目录名 = `encodeSegment(sessionId)`（逐 UTF-16 码元转义，`.` / `..` 特判）。日志文件名由**代次 + 压缩后端**决定：v0 为 `session.jsonl`，v1 起为 `session.v<N>.jsonl`，zstd 后端再加 `.zstd` 后缀。当前代次 **v3**（`SESSION_FORMAT_VERSION = 3`，见 `packages/core/session/src/types.ts`），即 `session.v3.jsonl.zstd`；旧代工件不可变，可能与当前代并存于同一会话目录。
 - **小计侧**：不监听会话事件、不 append 会话日志、不产生任何 `SessionEvent`；agent 加载/恢复/搜索/导出只接触会话日志通道，结构上接触不到 notes 文件。
 - **常驻会话侧**：它就是普通会话——日志、事件、agent 生命周期完全正常参与（否则卡片对话无法工作）。融合后插件**新增** `ctx.on('session/event', …)` 与 `ctx.on('agent/request', …)` 两个全局监听，但**只处理常驻会话 id**（`payload.agent.id === residentId`），且只做：递增 revision 计数（不缓存全文）、按 id 应用模型覆盖（其他会话直接放行）——不读取、不复制、不转发小计数据。
 
@@ -228,7 +229,7 @@ const title       = useWorkspaces((s) => s.items.find((w) => w.workspaceId === w
 - 小计单一事实来源：Host 域内存态（写链保证落盘先于内存变更）；浏览器每次变更后直接用返回的快照渲染。
 - 常驻会话单一事实来源：DSH 会话日志（原生通道）；卡片只读折叠后的紧凑 transcript。
 - 多窗口同步：小计 mutation 返回全量快照 + window focus 重拉；卡片轮询天然多窗口一致；第一版无实时推送。
-- **三条持久化通道的边界**：小计 → `storages/notes.json`；常驻会话 → `sessions/…/session.jsonl.zstd`；UI 偏好（折叠/比例）→ localStorage。互不相交。
+- **三条持久化通道的边界**：小计 → `storages/notes.json`；常驻会话 → `sessions/<projectKey(cwd)>/<encodeSegment(sessionId)>/session.v3.jsonl.zstd`；UI 偏好（折叠/比例）→ localStorage。互不相交。
 
 ## 5. 数据模型
 

@@ -4,7 +4,7 @@ DSH（DeepSeek Harness）「小记」插件：常驻在侧栏与对话区之间�
 
 所有配色基于 DSH 主题令牌（`--dsw-alias-*`），自动适配明暗主题。
 
-> 当前状态：**v0.7.16**——适配 dsh 0.1.5-alpha.1（官方右侧栏）；dsh-livefeed（「讯息」页签 / /api/dsh-livefeed / 未读角标）已移除，竖栏仅剩「小计」；Host half 改动需重启 DSH 生效，客户端改动刷新即见。
+> 当前状态：**v0.7.17**——文档修正（会话日志真实布局与 v3 代次，README 与 `docs/` 一并改正）+ 新增零依赖 CSS 自洽性测试 `test/client-css.test.mjs`；本版无**产品代码**改动；适配 dsh 0.1.5-alpha.1（官方右侧栏）；dsh-livefeed（「讯息」页签 / /api/dsh-livefeed / 未读角标）已移除，竖栏仅剩「小计」；Host half 改动需重启 DSH 生效，客户端改动刷新即见。
 
 ## 特性
 
@@ -24,6 +24,32 @@ DSH（DeepSeek Harness）「小记」插件：常驻在侧栏与对话区之间�
 - 删除「讯息」页签/页、未读角标、`/api/dsh-livefeed` 与 5s 轮询（`src/client/livefeed.js`、`src/livefeed-host.mjs` 已删除）。
 - 竖栏仅剩「小计」（全局/工作区 todo + 随记）与右缘宽度拖拽；Host 注入服务精简为 `webServer`。
 - 数据目录 `~/.dsh/dsh-livefeed/`（config/state/history）原样保留；需要时用 git 历史中的旧版恢复采集能力即可。
+
+## v0.7.17 · 文档修正：会话日志布局与代次
+
+- **路径修正**：**已废止的旧写法**——旧文档（v0.7.16 及以前的本 README）把会话日志写成
+  `~/.dsh/sessions/<cwd>/<sessionId>/session.jsonl.zstd`，该写法**切勿照抄**（`<cwd>` / `<sessionId>`
+  都是原始名、日志名是 v0 代次）；
+  真实布局是 `<root>/<projectKey(cwd)>/<encodeSegment(sessionId)>/session.v3.jsonl.zstd`
+  （`<root>` 即 `dshHomePath('sessions')`，默认 `~/.dsh/sessions`）。目录名是**编码后的
+  安全段**，不是原始 cwd / 原始 sessionId。
+- **代次校正**：当前会话格式代次是 **v3**（DSH 源码 `packages/core/session/src/types.ts`
+  的 `SESSION_FORMAT_VERSION = 3`；文件名规则见 `packages/session/session-format/src/filename.ts`：
+  v0 沿用 `session.jsonl`，此后为 `session.v<N>.jsonl`，压缩后端再加 `.zstd` 后缀），
+  旧文档写的是**不含 `.vN` 的 v0 形式文件名** `session.jsonl.zstd`。旧代（v0/v1/v2）工件不可变，
+  可能与当前代并存于同一会话目录。
+- **同步范围**：为消除「README 说已同步、同仓库文档却仍是旧布局」的矛盾，本次一并改正了
+  下列文件（全部是文档 / 测试 / 元数据，**无代码改动**）：
+
+  | 文件 | 改了什么 |
+  | --- | --- |
+  | `README.md` | 本节 + 「持久化」一节（路径与代次） |
+  | `docs/design.md` | §2.1 物理双通道、§3.6 对话消息持久化、§4 三条持久化通道 |
+  | `docs/research.md` | §1.3 常驻会话日志路径的实测补充 |
+  | `test/client-css.test.mjs` | 新增：零依赖 CSS 自洽性测试（私有令牌同名、外部令牌白名单） |
+  | `package.json` | `version` → 0.7.17；`scripts.test` → 显式指定测试文件 |
+
+  `src/`、`lib/` 未动（本版无代码改动）。
 
 ## v0.7.16 · 适配 dsh 0.1.5-alpha.1（官方右侧栏）
 
@@ -115,9 +141,16 @@ dsh web               # 重启 DSH 使其生效
 
 - **写入语义**：域写链 —— 先原子整文件落盘（临时文件 + rename，崩溃不留半截），
   再改内存、后发变更事件；插件内串行链保证读-改-写不交错
-- **与对话消息隔离**：对话消息存于 `~/.dsh/sessions/<cwd>/<sessionId>/session.jsonl.zstd`
-  （追加式 JSONL + zstd 压缩），与小记是**两条独立通道**；agent 只接触会话日志，
+- **与对话消息隔离**：对话消息存于
+  `~/.dsh/sessions/<projectKey(cwd)>/<encodeSegment(sessionId)>/session.v3.jsonl.zstd`
+  （追加式 JSONL + zstd 压缩；`<root>` 由 base bundle 配为 `dshHomePath('sessions')`，
+  默认 `~/.dsh/sessions`），与小记是**两条独立通道**；agent 只接触会话日志，
   结构上接触不到 notes 文件（详见 [docs/design.md](docs/design.md) §3.6）
+- **目录名是编码段，不是原始名**：`projectKey(cwd)` 把路径/盘符分隔符折成 `-`、把不安全
+  码元转义为 `~XXXX` 并在两侧补 `--`（会话无 cwd 时用 `_no-cwd`）；`encodeSegment(sessionId)`
+  逐码元转义，因此目录名与原始 cwd / sessionId 不同名，按原值找不到目录。
+  当前格式代次为 **v3**，日志名 `session.v3.jsonl.zstd`；旧代（v0/v1/v2）工件不可变，
+  **可能与当前代并存于同一会话目录**，读取以最新代次为准。
 
 ## 文档
 
