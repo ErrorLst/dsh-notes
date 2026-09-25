@@ -12,7 +12,8 @@
 //   4. 右缘宽度拖拽（localStorage 持久化，200~640px；生效宽度
 //      = min(拖拽宽, 与对话区可用留白)，绝不覆盖对话区；默认仍为自动适配）。
 //   5. 小计数据经 fetch('/api/dsh-notes') 读写；当前工作区解析链：
-//      当前会话 cwd（useSessions）→ 路径匹配工作区 → 兜底 recentWorkspaceId。
+//      当前会话（0.1.7 起取 retainedBy.mainView 持有的那条；≤0.1.6 回退
+//      SessionListState.current）→ 路径匹配工作区 → 兜底 recentWorkspaceId。
 //   6. 样式只使用 --dsw-alias-* 语义令牌。
 
 const React = require('react')
@@ -565,6 +566,17 @@ function scopeOf(data, tab) {
   return tab === 'global' ? data.global : data.workspace
 }
 
+/* 当前会话 id：dsh 0.1.7 起 SessionListState 不再携带 current 字段（useSessions 只读
+   列表快照），被主视图持有的会话改从 byId[].retainedBy.mainView 判定——与 DSH 自身
+   UiSession.publishMain 同一口径。≤0.1.6 仍回退 state.current，两条路都兼容。 */
+function mainSessionIdOf(state) {
+  for (const id of state.ids) {
+    const row = state.byId[id]
+    if (row !== undefined && (row.retainedBy?.mainView ?? 0) > 0) return id
+  }
+  return state.current
+}
+
 function NotesDock(props) {
   const useWorkspaces = props.useWorkspaces
   const useSessions = props.useSessions
@@ -572,9 +584,12 @@ function NotesDock(props) {
   // 当前工作区解析链（按可靠性排序）：
   //   1) 当前会话 id ∈ workspace.sessionIds（权威归属）
   //   2) 会话 cwd → 归一化路径匹配 workspace.path
-  //   3) recentWorkspaceId 兜底
-  const currentSessionId = useSessions ? useSessions((state) => state.current) : undefined
-  const currentCwd = useSessions ? useSessions((state) => (state.current !== undefined ? state.byId[state.current]?.cwd : undefined)) : undefined
+  //   3) recentWorkspaceId 兜底（历史宿主字段；0.1.5/0.1.7 的 WorkspaceSnapshot 均无）
+  const currentSessionId = useSessions ? useSessions((state) => mainSessionIdOf(state)) : undefined
+  const currentCwd = useSessions ? useSessions((state) => {
+    const id = mainSessionIdOf(state)
+    return id !== undefined ? state.byId[id]?.cwd : undefined
+  }) : undefined
   const recentWorkspaceId = useWorkspaces ? useWorkspaces((state) => state.recentWorkspaceId) : undefined
   const workspaceBySession = useWorkspaces ? useWorkspaces((state) => {
     if (currentSessionId === undefined) return undefined

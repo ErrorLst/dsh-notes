@@ -4,7 +4,7 @@ DSH（DeepSeek Harness）「小记」插件：常驻在侧栏与对话区之间�
 
 所有配色基于 DSH 主题令牌（`--dsw-alias-*`），自动适配明暗主题。
 
-> 当前状态：**v0.7.17**——文档修正（会话日志真实布局与 v3 代次，README 与 `docs/` 一并改正）+ 新增零依赖 CSS 自洽性测试 `test/client-css.test.mjs`；本版无**产品代码**改动；适配 dsh 0.1.5-alpha.1（官方右侧栏）；dsh-livefeed（「讯息」页签 / /api/dsh-livefeed / 未读角标）已移除，竖栏仅剩「小计」；Host half 改动需重启 DSH 生效，客户端改动刷新即见。
+> 当前状态：**v0.7.18**——适配 dsh 0.1.7：当前会话解析从 `SessionListState.current`（0.1.7 已移除）改为 `byId[].retainedBy.mainView`，修复小计竖栏在 0.1.7 上始终退回**全局**作用域、工作区页签消失的问题；新增零依赖回归测试 `test/client-current-session.test.mjs`。Host half 改动需重启 DSH 生效，客户端改动刷新即见。
 
 ## 特性
 
@@ -12,7 +12,7 @@ DSH（DeepSeek Harness）「小记」插件：常驻在侧栏与对话区之间�
 - 💬 **常驻会话卡片（上半）**：卡片内直接对话 —— 消息列表 + 发送/停止 + 流式显示；头部 ⚙ 可设预设 / 模型 / 思考等级；清空会话（归档 + 新建）；独立于任何工作区（未分组常驻会话，状态文件 `~/.dsh/session-card.json`）
 - 🔀 **上下分区**：分隔条可拖拽调整会话卡片 / 小计的比例（比例持久化）
 - 🌍 全局小记：不分工作区，跟随用户
-- 🗂️ 工作区小记：以工作区为单位隔离，跟随当前工作区（取自 `useWorkspaces.recentWorkspaceId`）
+- 🗂️ 工作区小记：以工作区为单位隔离，跟随当前工作区（0.1.7 起取 `byId[].retainedBy.mainView` 持有的会话，≤0.1.6 回退 `SessionListState.current`，再按 `sessionIds` / 归一化 `cwd` 匹配工作区）
 - 📋 **待办区**：分点待办 —— 添加、勾选/取消、双击行打开**详情卡片**（标题 + 描述一并编辑）、删除、清空已完成、**置顶**、**拖拽排序**、**撤销删除**（5 秒内可恢复）
 - ✍️ **随记区**：自由多行文本 —— 随意记录、不需要分点，输入防抖 + 失焦自动保存
 - 🔒 **Agent 隔离（小计内容）**：小计内容对模型完全不可见 —— 不注册任何模型工具、不进提示词、不写会话日志，数据仅存于独立存储域；常驻会话是独立聊天通道，与 notes.json 互不相通
@@ -24,6 +24,22 @@ DSH（DeepSeek Harness）「小记」插件：常驻在侧栏与对话区之间�
 - 删除「讯息」页签/页、未读角标、`/api/dsh-livefeed` 与 5s 轮询（`src/client/livefeed.js`、`src/livefeed-host.mjs` 已删除）。
 - 竖栏仅剩「小计」（全局/工作区 todo + 随记）与右缘宽度拖拽；Host 注入服务精简为 `webServer`。
 - 数据目录 `~/.dsh/dsh-livefeed/`（config/state/history）原样保留；需要时用 git 历史中的旧版恢复采集能力即可。
+
+## v0.7.18 · 适配 dsh 0.1.7：当前会话解析改用 retainedBy.mainView
+
+- **问题**：dsh 0.1.7 起 `useSessions` 读取的 `SessionListState` 不再携带 `current` 字段
+  （0.1.5-alpha.1 仍有、0.1.7-rc.1 已移除；对照 `dsh-v0.1.5-alpha.1` 与 `dsh-v0.1.7-rc.1`
+  的 `packages/api/session-controller/src/client/sessions/service.ts`）。旧代码以 `state.current`
+  定位当前会话，在 0.1.7 上恒为 `undefined`，于是「当前会话 → 工作区」两级解析同时落空——
+  小计竖栏永远退回**全局**作用域，工作区页签消失。
+- **修复**：新增 `mainSessionIdOf(state)`——优先取 `byId[].retainedBy.mainView > 0` 的会话
+  （与 DSH 自身 `UiSession.publishMain` 同一口径），无该字段时回退 `state.current`。
+  两条路径并存，0.1.5 / 0.1.6 / 0.1.7 均可正确定位当前会话。
+- **回归测试**：新增 `test/client-current-session.test.mjs`（零依赖），从产物 `lib/client.js`
+  抽出 `mainSessionIdOf` 直接执行，覆盖 0.1.7（mainView 命中）、≤0.1.6（回退 current）、
+  两者皆无三种形状，并固能源码 / 产物都带 mainView 逻辑、不再出现失效的 `state.current` 选择器。
+- `README.md`「工作区小记」来源说明同步更新；`package.json` `version` → 0.7.18、`scripts.test`
+  追加新测试文件。
 
 ## v0.7.17 · 文档修正：会话日志布局与代次
 
