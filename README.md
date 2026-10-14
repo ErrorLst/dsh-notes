@@ -1,23 +1,44 @@
 # dsh-notes · 小记（小计）
 
-DSH（DeepSeek Harness）「小记」插件：常驻在侧栏与对话区之间的**全高竖栏**——**小计**持久化轻量笔记栏（**全局**与**工作区**两种作用域，待办 + 随记），右缘可拖拽调宽。
+DSH（DeepSeek Harness）「小记」插件：**全局浮动窗口**——**小计**持久化轻量笔记（**全局**与**工作区**两种作用域），窗口内是**待办**与**随记**两个独立页签；窗口可自由拖动、自由缩放、一键折叠。
 
-所有配色基于 DSH 主题令牌（`--dsw-alias-*`），自动适配明暗主题。
+所有配色基于 DSH 主题令牌（`--dsw-alias-*` / `--dsh-*`），自动适配明暗主题。
 
-> 当前状态：**v0.7.18**——适配 dsh 0.1.7：当前会话解析从 `SessionListState.current`（0.1.7 已移除）改为 `byId[].retainedBy.mainView`，修复小计竖栏在 0.1.7 上始终退回**全局**作用域、工作区页签消失的问题；新增零依赖回归测试 `test/client-current-session.test.mjs`。Host half 改动需重启 DSH 生效，客户端改动刷新即见。
+> 当前状态：**v0.8.0**——竖栏改全局浮动窗口：`position: fixed` 不再跟随侧栏/会话头部测量，标题栏拖拽移动、右缘/下缘/右下角手柄自由缩放、标题栏一键折叠（位置/尺寸/折叠态持久化）；「待办」「随记」拆成两个独立页签切换显示，作用域（全局/工作区）收进标题栏；删除旧的「自适应隐藏」与右缘单向拉宽逻辑。新增零依赖回归测试 `test/client-window.test.mjs`。Host half 未改，客户端改动刷新即见。
 
 ## 特性
 
-- 📐 **常驻竖栏（顶栏之下全高）**：浮层贴住侧栏右缘（宽 280、从 DSH 顶部栏下缘到页面底部，**不覆盖上边栏**），**不参与布局**——折叠/缩放不影响对话区宽度；可折叠成「小记」按钮条（状态持久化），侧栏折叠时位置自动跟随
-- 💬 **常驻会话卡片（上半）**：卡片内直接对话 —— 消息列表 + 发送/停止 + 流式显示；头部 ⚙ 可设预设 / 模型 / 思考等级；清空会话（归档 + 新建）；独立于任何工作区（未分组常驻会话，状态文件 `~/.dsh/session-card.json`）
-- 🔀 **上下分区**：分隔条可拖拽调整会话卡片 / 小计的比例（比例持久化）
-- 🌍 全局小记：不分工作区，跟随用户
-- 🗂️ 工作区小记：以工作区为单位隔离，跟随当前工作区（0.1.7 起取 `byId[].retainedBy.mainView` 持有的会话，≤0.1.6 回退 `SessionListState.current`，再按 `sessionIds` / 归一化 `cwd` 匹配工作区）
-- 📋 **待办区**：分点待办 —— 添加、勾选/取消、双击行打开**详情卡片**（标题 + 描述一并编辑）、删除、清空已完成、**置顶**、**拖拽排序**、**撤销删除**（5 秒内可恢复）
+- 🪟 **全局浮动窗口**：`position: fixed` 悬浮在整个应用之上（注册于 `shell.overlay`），**不参与布局**——折叠/缩放都不影响对话区宽度；不再测量侧栏列宽与会话头部，也不再随对话区留白自动隐藏
+- ↔️ **自由调整尺寸**：右缘 / 下缘 / 右下角三个手柄任意拖拽（最小 240×200，上限随视口钳制）；**拖标题栏自由移动**（`localStorage` 持久化，缩窗后自动收回可视区）
+- 🗂️ **两个独立页签**：**待办**（分点列表）与**随记**（自由多行文本）拆成两个页面切换显示，一次只渲染当前面板；待办页签带未完成计数
+- 🗜️ **可折叠**：点标题栏折叠按钮（或双击标题栏）折叠成一条标题条，只留「小计 + 待办计数 + 展开按钮」，位置与宽度保留，状态持久化
+- 🌍 **作用域**：全局（不分工作区，跟随用户）/ 工作区（按当前会话归属或路径匹配隔离），收进标题栏的胶囊切换
+- 📋 **待办区**：添加、勾选/取消、双击行打开**详情卡片**（标题 + 描述一并编辑）、删除、**置顶**、**拖拽排序**、**撤销删除**（5 秒内可恢复）
 - ✍️ **随记区**：自由多行文本 —— 随意记录、不需要分点，输入防抖 + 失焦自动保存
-- 🔒 **Agent 隔离（小计内容）**：小计内容对模型完全不可见 —— 不注册任何模型工具、不进提示词、不写会话日志，数据仅存于独立存储域；常驻会话是独立聊天通道，与 notes.json 互不相通
-- 💾 持久化：小计落盘 `~/.dsh/storages/notes.json`（存储域 `notes`，JSON 后端）；常驻会话走 DSH 原生会话日志
-- 🎨 主题适配：仅使用 DSH 语义令牌（`--dsw-alias-*`），明暗自动切换
+- 🔒 **Agent 隔离（小计内容）**：小计内容对模型完全不可见 —— 不注册任何模型工具、不进提示词、不写会话日志，数据仅存于独立存储域
+- 💾 持久化：小计落盘 `~/.dsh/storages/notes.json`（存储域 `notes`，JSON 后端）
+- 🎨 主题适配：仅使用 DSH 语义令牌（`--dsw-alias-*` / `--dsh-*`），明暗自动切换
+
+## v0.8.0 · 全局浮动窗口 + 待办/随记双页签
+
+- **外壳**：`.dsh-notes-dock` 由 `position: absolute`（贴侧栏、顶到底全高）改为 `position: fixed`
+  浮层，圆角 + 阴影 + 裁剪；新增标题栏 `.dock-header`（拖拽把手）、页签栏 `.dock-tabs`、
+  尺寸手柄 `.dock-resize-r` / `.dock-resize-b` / `.dock-resize-se`。
+- **交互**：
+  - 标题栏 `pointerdown` 拖拽移动（按钮上的按下不触发拖拽，双击标题栏折叠/展开）；
+  - 三个手柄按 `data-axis`（`x` / `y` / `xy`）自由缩放；
+  - 折叠态只渲染标题条（`height: auto`），折叠前把待办详情卡片落盘并关闭；
+  - 几何写在 `localStorage` 的 `dsh-notes.window.v1`（`{x, y, w, h, collapsed}`），
+    读取与每次变更都过 `clampWin`——窗口始终留在视口内，`window.resize` 后自动收回。
+- **页签**：`view`（`todo` / `memo`）取代原先「待办区 + 随记区」上下堆叠；作用域胶囊（全局 /
+  工作区）从独立 tab 行移入标题栏，切换时行为不变（先保存随记草稿）。
+- **删除**：旧竖栏的定位测量 effect（约 240 行：侧栏列宽 / 会话头部 / 对话留白 / 骨架观察器 /
+  1.5s 轮询）、`covered-hidden` 与 `view-hidden` 自适应隐藏、右缘单向宽度拖拽
+  （`dockWidth` 键不再使用）。
+- **回归测试**：新增 `test/client-window.test.mjs`（零依赖）——从产物抽出 `winDefaults` /
+  `clampWin` / `winRead` / `winWrite` 直接执行（注入 window / localStorage 桩），覆盖默认几何、
+  超界钳制、最小尺寸、折叠标记、损坏记录回退、往返读写；并固外壳 `position: fixed`、
+  三手柄 / 两页签存在、旧规则不再残留。
 
 ## v0.7.0 · 移除 dsh-livefeed
 
@@ -46,13 +67,13 @@ DSH（DeepSeek Harness）「小记」插件：常驻在侧栏与对话区之间�
 - **路径修正**：**已废止的旧写法**——旧文档（v0.7.16 及以前的本 README）把会话日志写成
   `~/.dsh/sessions/<cwd>/<sessionId>/session.jsonl.zstd`，该写法**切勿照抄**（`<cwd>` / `<sessionId>`
   都是原始名、日志名是 v0 代次）；
-  真实布局是 `<root>/<projectKey(cwd)>/<encodeSegment(sessionId)>/session.v3.jsonl.zstd`
+  真实布局是 `<root>/<projectKey(cwd)>/<encodeSegment(sessionId)>/session.v4.jsonl.zstd`
   （`<root>` 即 `dshHomePath('sessions')`，默认 `~/.dsh/sessions`）。目录名是**编码后的
   安全段**，不是原始 cwd / 原始 sessionId。
-- **代次校正**：当前会话格式代次是 **v3**（DSH 源码 `packages/core/session/src/types.ts`
-  的 `SESSION_FORMAT_VERSION = 3`；文件名规则见 `packages/session/session-format/src/filename.ts`：
+- **代次校正**：当前会话格式代次是 **v4**（DSH 源码 `packages/core/session/src/types.ts`
+  的 `SESSION_FORMAT_VERSION = 4`；文件名规则见 `packages/session/session-format/src/filename.ts`：
   v0 沿用 `session.jsonl`，此后为 `session.v<N>.jsonl`，压缩后端再加 `.zstd` 后缀），
-  旧文档写的是**不含 `.vN` 的 v0 形式文件名** `session.jsonl.zstd`。旧代（v0/v1/v2）工件不可变，
+  旧文档写的是**不含 `.vN` 的 v0 形式文件名** `session.jsonl.zstd`。旧代（v0/v1/v2/v3）工件不可变，
   可能与当前代并存于同一会话目录。
 - **同步范围**：为消除「README 说已同步、同仓库文档却仍是旧布局」的矛盾，本次一并改正了
   下列文件（全部是文档 / 测试 / 元数据，**无代码改动**）：
@@ -158,14 +179,14 @@ dsh web               # 重启 DSH 使其生效
 - **写入语义**：域写链 —— 先原子整文件落盘（临时文件 + rename，崩溃不留半截），
   再改内存、后发变更事件；插件内串行链保证读-改-写不交错
 - **与对话消息隔离**：对话消息存于
-  `~/.dsh/sessions/<projectKey(cwd)>/<encodeSegment(sessionId)>/session.v3.jsonl.zstd`
+  `~/.dsh/sessions/<projectKey(cwd)>/<encodeSegment(sessionId)>/session.v4.jsonl.zstd`
   （追加式 JSONL + zstd 压缩；`<root>` 由 base bundle 配为 `dshHomePath('sessions')`，
   默认 `~/.dsh/sessions`），与小记是**两条独立通道**；agent 只接触会话日志，
   结构上接触不到 notes 文件（详见 [docs/design.md](docs/design.md) §3.6）
 - **目录名是编码段，不是原始名**：`projectKey(cwd)` 把路径/盘符分隔符折成 `-`、把不安全
   码元转义为 `~XXXX` 并在两侧补 `--`（会话无 cwd 时用 `_no-cwd`）；`encodeSegment(sessionId)`
   逐码元转义，因此目录名与原始 cwd / sessionId 不同名，按原值找不到目录。
-  当前格式代次为 **v3**，日志名 `session.v3.jsonl.zstd`；旧代（v0/v1/v2）工件不可变，
+  当前格式代次为 **v4**，日志名 `session.v4.jsonl.zstd`；旧代（v0/v1/v2/v3）工件不可变，
   **可能与当前代并存于同一会话目录**，读取以最新代次为准。
 
 ## 文档
@@ -183,8 +204,9 @@ dsh-notes/
 ├── src/
 │   ├── index.mjs          # Host half：存储域 + HTTP API（小计）
 │   └── client/
-│       └── index.ts       # 浏览器 half：全高竖栏（小计 + 宽度拖拽）
-├── prototype/index.html   # HTML 原型（样式基准）
+│       └── index.ts       # 浏览器 half：全局浮动窗口（待办/随记双页签 + 拖拽/缩放/折叠）
+├── prototype/index.html   # HTML 原型（旧竖栏样式参考）
+├── test/                  # 零依赖回归测试（CSS 令牌 / 当前会话解析 / 浮动窗口几何）
 ├── docs/
 │   ├── design.md          # 设计文档（v0.4 融合版）
 │   └── research.md        # API 调研记录（会话卡片部分）
@@ -197,7 +219,7 @@ dsh-notes/
 
 - 构建：`pnpm build`（tsdown；Node 半为 ESM，浏览器半为 `__ModuleLoader__` CJS 工厂）
 - 浏览器端代码**禁止 JSX/import 变换**，按官方 client 通道编写
-- 样式**禁止硬编码色值**：一律使用 `--dsw-alias-*` 语义令牌（原型即样式基准）
+- 样式**禁止硬编码色值**：一律使用 `--dsw-alias-*` / `--dsh-*` 语义令牌
 - 实现前请阅读 [docs/design.md](docs/design.md)，其中含已核实的运行时接口事实
 
 ## License

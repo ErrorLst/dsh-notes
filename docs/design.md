@@ -3,6 +3,8 @@
 
 > [DSH 版本标注 2026-09，DSH 0.1.2-alpha.1] 本文档写于 DSH 0.1.1-rc.2 时期：文中引用的 @deepseek-ai/dsh-client-runtime 已更名 @deepseek-ai/dsh-client-store（useSessions/useWorkspaces/useProjection 等客户端座席仍在，由新包及 ui-session/ui-chat 提供）；@deepseek-ai/dsh-host-apiproxy 已删除，拆分为 @deepseek-ai/dsh-api-session-controller、dsh-api-settings-controller、dsh-api-workspace-controller，客户端不再使用 connection.api。本文仅作历史设计参照，实现契约请以当前 DSH 源码为准。
 
+> [v0.8.0 变更提示] 本文档描述的是 v0.4 时期「贴住侧栏的全高竖栏」。v0.7.0 已移除常驻会话卡片，v0.8.0 进一步改为**全局浮动窗口**：`position: fixed` + 标题栏拖拽移动 + 右缘/下缘/右下角手柄自由缩放 + 可折叠，几何存 `localStorage` 键 `dsh-notes.window.v1`；「待办」「随记」拆成两个独立页签，作用域（全局/工作区）收进标题栏。§2 / §4 / §7 / §8 中关于竖栏定位、自适应宽度与右缘单向拖拽的描述均已不再适用；实现契约以 `src/client/index.ts` 与 `README.md` 为准。
+
 > 版本：0.4 · 状态：**已实现（v0.4.27）** · 关联原型：`prototype/index.html`
 >
 > 变更记录：
@@ -68,7 +70,7 @@ dsh-notes 在 DSH Web 界面中提供**侧栏与对话区之间的常驻竖栏**
 | 选择模型 / 思考等级 | ⚙ 弹窗内 · `llm` 模型目录（provider 分组）+ 当前模型 `reasoning.efforts`（含「默认」）；经 `agent/request` 全局瀑布监听（untagged、按会话 id 过滤）覆盖 provider/model/reasoningEffort |
 | 清空会话 | 两段式确认；`workspaceRegistry.archiveSession` 归档 + 新建空白常驻会话（运行中拒绝）；客户端不自动导航 |
 | —— 小计（下半，原有） —— | |
-| Tab | 「全局」/「本工作区（工作区标题）」；无当前工作区（`recentWorkspaceId === undefined`）时隐藏工作区 tab；**默认落在当前工作区**（v0.4.17 起：首次加载有工作区即默认工作区 tab，切换工作区后自动回到新工作区的小计；无工作区时回全局），切换时各自独立读写 |
+| Tab | 「全局」/「本工作区（工作区标题）」；无当前工作区（会话不归属任何工作区且 cwd 不匹配任何工作区路径）时隐藏工作区 tab；**默认落在当前工作区**（v0.4.17 起：首次加载有工作区即默认工作区 tab，切换工作区后自动回到新工作区的小计；无工作区时回全局），切换时各自独立读写 |
 | 待办区 | 分区标题行（标题 + 「共 X 项 · 未完成 Y」+「清空已完成」）+ 添加输入行 + 分点列表：勾选/取消（显式传 done，幂等）、**双击行打开详情卡片（v0.4.27）**：卡片内编辑标题 + 描述（`detail` 字段，防抖 600ms 自动保存，含创建/更新时间与完成/置顶状态；悬停「详情」按钮同样打开；双击行内按钮时交给按钮自身处理）、删除（行悬停出现）、置顶（📌，置顶项恒在顶部）、拖拽排序（Pointer Events，拖到置顶区自动置顶）、撤销删除（5 秒内「撤销」条，恢复原位置） |
 | 随记区 | 分区标题行（标题 + 保存状态）+ 多行 textarea：自由文本，防抖 600ms 自动保存 + 失焦立即保存；清空 = 文本置空 |
 | 空/错状态 | 待办空列表提示；host 存储不可用时竖栏顶部错误条，UI 不崩溃 |
@@ -81,7 +83,7 @@ dsh-notes 在 DSH Web 界面中提供**侧栏与对话区之间的常驻竖栏**
 
 1. **不注册模型工具**：不调用 `harness.defineTool` / `tools.register`，模型工具目录中不存在任何 notes 工具。
 2. **不进提示词**：不注册 `systemPrompt` section / context / 变量，**小计内容永不进入任何模型上下文**（包括常驻会话的请求）。
-3. **物理双通道**：小计数据只写入独立存储域文件 `~/.dsh/storages/notes.json`；常驻会话与普通会话一样写 `~/.dsh/sessions/<projectKey(cwd)>/<encodeSegment(sessionId)>/session.v3.jsonl.zstd`（追加式 zstd JSONL；目录名是**编码后的安全段**，不是原始 cwd / sessionId，见 §3.6）。**两条通道互不相交**：小计内容不会被折叠进常驻会话 transcript，常驻会话内容也不会写进 notes.json（详见 §3.6）。
+3. **物理双通道**：小计数据只写入独立存储域文件 `~/.dsh/storages/notes.json`；常驻会话与普通会话一样写 `~/.dsh/sessions/<projectKey(cwd)>/<encodeSegment(sessionId)>/session.v4.jsonl.zstd`（追加式 zstd JSONL；目录名是**编码后的安全段**，不是原始 cwd / sessionId，见 §3.6）。**两条通道互不相交**：小计内容不会被折叠进常驻会话 transcript，常驻会话内容也不会写进 notes.json（详见 §3.6）。
 4. **不注册 Remote 服务**：Host API 是普通 HTTP 路由（`webServer.register`，`/api/dsh-notes`），仅浏览器同源 `fetch` 调用；不经 typert gateway / api-remotes 暴露。
 5. **键只是字符串**：工作区小计仅以 `workspaceId` 字符串为键；常驻会话仅以 sessionId 字符串为键，互不引用。
 6. **无鉴权面**：HTTP API 无登录/密钥，仅依赖 DSH Web 本机绑定（默认 `127.0.0.1:3080`），部署层网络边界即访问边界。
@@ -113,15 +115,19 @@ ctx.slots.inject('shell.overlay', () =>
 )
 ```
 
-### 3.2 当前工作区与标题（v0.3 已核实，沿用）
+### 3.2 当前工作区与标题（0.1.7 起按 WorkspaceSnapshot 核实）
 
-`WorkspaceListState`（`dsh-client-runtime`）：
-- `recentWorkspaceId: WorkspaceId | undefined`；
-- `items: readonly WorkspaceView[]`，`WorkspaceView = { workspaceId, path, title, sessionIds, createdAt, updatedAt }`。
+`WorkspaceSnapshot`（`ui-workspace` 注入的 `useWorkspaces` 选择器状态；**无 `recentWorkspaceId`**）：
+- `items: readonly WorkspaceView[]`，`WorkspaceView = { workspaceId, path, title, sessionIds, createdAt, updatedAt }`；
+- 另有 `archivedSessionIds`、`pinnedSessionIds`、`state`、`phase`、`error`。
 
-取值：
+当前工作区按两条依据解析（会话归属优先，其次路径匹配）：
 ```ts
-const workspaceId = useWorkspaces((s) => s.recentWorkspaceId)
+const currentSessionId = useSessions((state) => mainSessionIdOf(state))       // retainedBy.mainView
+const currentCwd       = useSessions((state) => state.byId[currentSessionId]?.cwd)
+const bySession = useWorkspaces((s) => s.items.find((w) => w.sessionIds.includes(currentSessionId))?.workspaceId)
+const byCwd     = useWorkspaces((s) => s.items.find((w) => normalize(w.path) === normalize(currentCwd))?.workspaceId)
+const workspaceId = bySession ?? byCwd
 const title       = useWorkspaces((s) => s.items.find((w) => w.workspaceId === workspaceId)?.title)
 ```
 
@@ -148,12 +154,12 @@ const title       = useWorkspaces((s) => s.items.find((w) => w.workspaceId === w
 
 | | 小计（本插件） | 常驻会话 / 普通对话（DSH 原生） |
 | --- | --- | --- |
-| 位置 | `~/.dsh/storages/notes.json` | `~/.dsh/sessions/<projectKey(cwd)>/<encodeSegment(sessionId)>/session.v3.jsonl.zstd` |
+| 位置 | `~/.dsh/storages/notes.json` | `~/.dsh/sessions/<projectKey(cwd)>/<encodeSegment(sessionId)>/session.v4.jsonl.zstd` |
 | 后端 | storage-domain（JSON 后端） | session-persistence-jsonl（追加式 JSONL，zstd） |
 | 格式 | 人类可读 JSON（整文件快照） | 追加式 JSONL |
 | 写入 | 原子整文件替换 + 域写链 | append-only 事件 |
 
-- **路径与代次（v0.7.17 更正；**已废止的旧写法**：原文档写作 `~/.dsh/sessions/<cwd>/<sessionId>/session.jsonl.zstd`，**切勿照抄**）**：会话根 `<root>` = `dshHomePath('sessions')`（默认 `~/.dsh/sessions`）；项目目录名 = `projectKey(cwd)`——分隔符 `/` / `\` / `:` 的连续段折成一个 `-`，不安全码元按 UTF-16 码元转义为 `~XXXX`，去掉前导 `-` 后两侧补 `--`，并以 251 字符截断（无 cwd 的会话用 `_no-cwd`）；会话目录名 = `encodeSegment(sessionId)`（逐 UTF-16 码元转义，`.` / `..` 特判）。日志文件名由**代次 + 压缩后端**决定：v0 为 `session.jsonl`，v1 起为 `session.v<N>.jsonl`，zstd 后端再加 `.zstd` 后缀。当前代次 **v3**（`SESSION_FORMAT_VERSION = 3`，见 `packages/core/session/src/types.ts`），即 `session.v3.jsonl.zstd`；旧代工件不可变，可能与当前代并存于同一会话目录。
+- **路径与代次（v0.7.17 更正；**已废止的旧写法**：原文档写作 `~/.dsh/sessions/<cwd>/<sessionId>/session.jsonl.zstd`，**切勿照抄**）**：会话根 `<root>` = `dshHomePath('sessions')`（默认 `~/.dsh/sessions`）；项目目录名 = `projectKey(cwd)`——分隔符 `/` / `\` / `:` 的连续段折成一个 `-`，不安全码元按 UTF-16 码元转义为 `~XXXX`，去掉前导 `-` 后两侧补 `--`，并以 251 字符截断（无 cwd 的会话用 `_no-cwd`）；会话目录名 = `encodeSegment(sessionId)`（逐 UTF-16 码元转义，`.` / `..` 特判）。日志文件名由**代次 + 压缩后端**决定：v0 为 `session.jsonl`，v1 起为 `session.v<N>.jsonl`，zstd 后端再加 `.zstd` 后缀。当前代次 **v4**（`SESSION_FORMAT_VERSION = 4`，见 `packages/core/session/src/types.ts`），即 `session.v4.jsonl.zstd`；旧代工件不可变，可能与当前代并存于同一会话目录。
 - **小计侧**：不监听会话事件、不 append 会话日志、不产生任何 `SessionEvent`；agent 加载/恢复/搜索/导出只接触会话日志通道，结构上接触不到 notes 文件。
 - **常驻会话侧**：它就是普通会话——日志、事件、agent 生命周期完全正常参与（否则卡片对话无法工作）。融合后插件**新增** `ctx.on('session/event', …)` 与 `ctx.on('agent/request', …)` 两个全局监听，但**只处理常驻会话 id**（`payload.agent.id === residentId`），且只做：递增 revision 计数（不缓存全文）、按 id 应用模型覆盖（其他会话直接放行）——不读取、不复制、不转发小计数据。
 
@@ -229,7 +235,7 @@ const title       = useWorkspaces((s) => s.items.find((w) => w.workspaceId === w
 - 小计单一事实来源：Host 域内存态（写链保证落盘先于内存变更）；浏览器每次变更后直接用返回的快照渲染。
 - 常驻会话单一事实来源：DSH 会话日志（原生通道）；卡片只读折叠后的紧凑 transcript。
 - 多窗口同步：小计 mutation 返回全量快照 + window focus 重拉；卡片轮询天然多窗口一致；第一版无实时推送。
-- **三条持久化通道的边界**：小计 → `storages/notes.json`；常驻会话 → `sessions/<projectKey(cwd)>/<encodeSegment(sessionId)>/session.v3.jsonl.zstd`；UI 偏好（折叠/比例）→ localStorage。互不相交。
+- **三条持久化通道的边界**：小计 → `storages/notes.json`；常驻会话 → `sessions/<projectKey(cwd)>/<encodeSegment(sessionId)>/session.v4.jsonl.zstd`；UI 偏好（折叠/比例）→ localStorage。互不相交。
 
 ## 5. 数据模型
 

@@ -28,7 +28,7 @@
 - **`ctx.layout` 不可用**：仅暴露 `toggleSidebar / openDetails / closeDetails`（服务目录核实），无宽度 getter、无订阅、无事件；
 - **结论**：卡片 `position: absolute; top: 12px; left: <首列宽 + 12px>`；实现时读取挂载容器（`[data-shell-overlay]`）的父级 frame 的 computed `gridTemplateColumns` 首列，MutationObserver 监听 frame 的 `style` / `data-sidebar-collapsed` 属性变化 + window resize 重读；测量失败回退 280px。折叠成导轨（56px）时卡片自动左移贴住中间栏。
 - **实测补充（2026-08）**：`sandboxPolicy.workspaceRoot` 在本部署解析为**用户主目录**（`C:\Users\zhoujin`），因此状态文件实际落在 `~/.dsh/session-card.json`（`{workspaceRoot}/.dsh/session-card.json` 首写路径成功）。
-- **常驻会话日志路径（v0.7.17 更正）**：未分组常驻会话（无 cwd）的日志目录是 `~/.dsh/sessions/_no-cwd/<encodeSegment(sessionId)>/`，当前代次文件名为 `session.v3.jsonl.zstd`（v0 为 `session.jsonl`，v1 起为 `session.v<N>.jsonl`，zstd 后端再加 `.zstd` 后缀）。目录名是**编码后的安全段**，不是原始 sessionId，按原始值找不到目录。上文同一条 2026-08 实测里记的路径（`_no-cwd/<sessionId>/session.jsonl.zstd`，**已废止的旧写法：这是旧文档的字面原文，切勿照抄**）已不是当前形式——目录段不编码、文件名是 v0 代次的无版本名，**导航请以本条为准**；根目录 = `dshHomePath('sessions')`（默认 `~/.dsh/sessions`），完整规则见 `design.md` §3.6。
+- **常驻会话日志路径（v0.7.17 更正）**：未分组常驻会话（无 cwd）的日志目录是 `~/.dsh/sessions/_no-cwd/<encodeSegment(sessionId)>/`，当前代次文件名为 `session.v4.jsonl.zstd`（v0 为 `session.jsonl`，v1 起为 `session.v<N>.jsonl`，zstd 后端再加 `.zstd` 后缀）。目录名是**编码后的安全段**，不是原始 sessionId，按原始值找不到目录。上文同一条 2026-08 实测里记的路径（`_no-cwd/<sessionId>/session.jsonl.zstd`，**已废止的旧写法：这是旧文档的字面原文，切勿照抄**）已不是当前形式——目录段不编码、文件名是 v0 代次的无版本名，**导航请以本条为准**；根目录 = `dshHomePath('sessions')`（默认 `~/.dsh/sessions`），完整规则见 `design.md` §3.6。
 
 ### 1.4 客户端会话面与事件流（卡片内对话的关键事实）
 
